@@ -13,6 +13,9 @@ I progetti coprono casi d'uso diversi: classificazione tabellare, regressione, c
 |   `-- GUIDA_PROGETTO.md
 |-- Cross selling assicurativo/
 |   `-- Cross-Sellling Assicurativo.ipynb
+|-- Cyber Security per la sanità tramite Reinforcement Learning/
+|   |-- Cyber_Security_Sanita_Reinforcement_Learning.ipynb
+|   `-- GUIDA_PROGETTO.md
 |-- Modello previsionale mercato immobiliare/
 |   |-- Modello_Previsionale_Mercato_Immobiliare.ipynb
 |   `-- GUIDA_PROGETTO.md
@@ -46,7 +49,25 @@ Il notebook affronta un problema di classificazione binaria con target sbilancia
 File principale:
 - `Cross-Sellling Assicurativo.ipynb`
 
-### 3. Modello previsionale mercato immobiliare
+### 3. Cyber Security per la sanità tramite Reinforcement Learning
+
+Progetto di Reinforcement Learning applicato alla sicurezza informatica in ambito sanitario.
+L'obiettivo e' addestrare un agente difensivo capace di individuare un attaccante che si muove
+in una rete simulata prima che raggiunga i dati sensibili dei pazienti, usando l'ambiente
+[`gym-idsgame`](https://github.com/Limmen/gym-idsgame).
+
+Il notebook confronta un agente **SARSA** (tabellare, on-policy) sullo scenario *random attack*
+con un agente **Double DQN** (rete neurale in PyTorch, off-policy) sugli scenari *random attack*
+e *maximal attack*, oltre a due baseline ingenue (difensore casuale e a regola fissa). Include
+la verifica a codice di alcune incompatibilita' non documentate della libreria, un wrapper
+dedicato per l'ambiente, metriche di valutazione basate su tassi di rilevamento/violazione/timeout
+e un'analisi critica di quando l'apprendimento porta davvero un vantaggio misurabile.
+
+File principali:
+- `Cyber_Security_Sanita_Reinforcement_Learning.ipynb`
+- `GUIDA_PROGETTO.md`
+
+### 4. Modello previsionale mercato immobiliare
 
 Progetto di regressione dedicato alla stima dei prezzi immobiliari. Il caso d'uso riguarda la previsione del valore di una proprieta' sulla base di caratteristiche come superficie, numero di stanze, bagni, piani, servizi disponibili e posizione.
 
@@ -56,7 +77,7 @@ File principale:
 - `Modello_Previsionale_Mercato_Immobiliare.ipynb`
 - `GUIDA_PROGETTO.md`
 
-### 4. Riconoscimento di fiori
+### 5. Riconoscimento di fiori
 
 Progetto di computer vision per la classificazione binaria di immagini di fiori, in particolare daisy e dandelion. Utilizza tecniche di transfer learning con EfficientNet-B0 tramite PyTorch e la libreria `timm`.
 
@@ -66,7 +87,7 @@ File principali:
 - `Riconoscimento di fiori per AgriTech.ipynb`
 - `GUIDA_PROGETTO_FIORI.md`
 
-### 5. Riconoscimento animali CIFAR
+### 6. Riconoscimento animali CIFAR
 
 Progetto di deep learning su immagini basato sul dataset CIFAR-10, trasformato in un problema di classificazione binaria tra animali e veicoli. Il contesto applicativo e' il riconoscimento di oggetti rilevanti per sistemi di guida autonoma.
 
@@ -92,6 +113,7 @@ File principali:
 - PyTorch, torchvision
 - timm
 - albumentations
+- Gymnasium, gym-idsgame
 - Jupyter Notebook / Google Colab
 
 ## Note
