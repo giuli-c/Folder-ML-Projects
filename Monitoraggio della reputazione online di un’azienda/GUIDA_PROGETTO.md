@@ -130,21 +130,23 @@ La tabella `monitoring_summary` (costruita dalla funzione riusabile `build_monit
 
 ## 11. Pipeline CI/CD e repository `sentiment_reputation_mlops/`
 
-La consegna richiede una repository GitHub pubblica con codice documentato. I file vivono come file veri nella cartella [`sentiment_reputation_mlops/`](sentiment_reputation_mlops/), non come stringhe dentro il notebook:
+La consegna richiede una repository GitHub pubblica con codice documentato. I file applicativi vivono come file veri nella cartella [`sentiment_reputation_mlops/`](sentiment_reputation_mlops/), non come stringhe dentro il notebook. Il workflow `ci.yml`, invece, sta alla **radice del repository** GitHub (non dentro questa cartella): GitHub Actions legge i workflow solo da `.github/workflows/` nella vera radice del repository ricevuto da un push, mai da una sottocartella — se restasse annidato qui, la pipeline non partirebbe mai.
 
 ```
-sentiment_reputation_mlops/
-├── requirements.txt
-├── predictor.py          # SentimentPredictor: carica il modello una volta, espone predict()
-├── app.py                # demo Gradio, usa SentimentPredictor
-├── conftest.py            # vuoto: serve solo perche' pytest trovi predictor.py da tests/
-├── .gitignore
-├── tests/
-│   └── test_smoke.py     # test_model_loads + test_known_examples
-└── .github/workflows/ci.yml
+<radice del repository GitHub>
+├── .github/workflows/ci.yml   # radice del repo: qui GitHub Actions lo trova davvero;
+│                               # un filtro `paths` lo fa scattare solo per questa cartella
+└── sentiment_reputation_mlops/
+    ├── requirements.txt
+    ├── predictor.py          # SentimentPredictor: carica il modello una volta, espone predict()
+    ├── app.py                # demo Gradio, usa SentimentPredictor
+    ├── conftest.py            # vuoto: serve solo perche' pytest trovi predictor.py da tests/
+    ├── .gitignore
+    └── tests/
+        └── test_smoke.py     # test_model_loads + test_known_examples
 ```
 
-`app.py` e `tests/test_smoke.py` importano entrambi `SentimentPredictor` da `predictor.py`, invece di caricare il modello ciascuno per conto proprio — stesso principio di modularità della sezione 6/7 del notebook. `conftest.py` è vuoto ma necessario: senza di esso, pytest non aggiungerebbe la radice del repository a `sys.path`, e l'import di `predictor` da dentro `tests/` fallirebbe. Il workflow `ci.yml` installa le dipendenze (con cache pip) ed esegue `pytest` ad ogni push o pull request su `main`.
+`app.py` e `tests/test_smoke.py` importano entrambi `SentimentPredictor` da `predictor.py`, invece di caricare il modello ciascuno per conto proprio — stesso principio di modularità della sezione 6/7 del notebook. `conftest.py` è vuoto ma necessario: senza di esso, pytest non aggiungerebbe la radice del repository a `sys.path`, e l'import di `predictor` da dentro `tests/` fallirebbe. Il workflow `ci.yml` installa le dipendenze (con cache pip) ed esegue `pytest` ad ogni push o pull request su `main` che tocchi `sentiment_reputation_mlops/` (`working-directory` nel workflow punta lì, così i comandi girano nella cartella giusta invece che nella radice del repo).
 
 **Prima della consegna**: creare il repository, pushare il contenuto di `sentiment_reputation_mlops/`, e incollare il link reale nella cella `GITHUB_REPOSITORY_URL` in cima al notebook (oggi contiene ancora un placeholder).
 
