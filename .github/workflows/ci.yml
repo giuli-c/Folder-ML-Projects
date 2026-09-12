@@ -50,10 +50,17 @@ jobs:
   deploy:
     needs: test
     # Solo su push diretto a main, mai sulle pull request (i secret non sono
-    # comunque disponibili alle PR da fork, ed e' corretto cosi': in questo modo 
+    # comunque disponibili alle PR da fork, ed e' corretto cosi': in questo modo
     # non si deploya codice non ancora mergiato/revisionato).
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # Creare un NUOVO Space con SDK Gradio/Docker richiede HuggingFace PRO
+    # (errore 402 su account free) - un limite dell'account, non un bug. Senza
+    # questo flag un 402 farebbe apparire l'intera pipeline come fallita;
+    # continue-on-error mostra il job con un'icona di avviso invece di una X
+    # rossa dura, senza bloccare il resto - deploy_to_hf.py stampa comunque
+    # un'annotazione "::error::" ben visibile con il motivo esatto.
+    continue-on-error: true
     defaults:
       run:
         working-directory: "Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops"
