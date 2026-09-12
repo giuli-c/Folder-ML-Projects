@@ -1,0 +1,55 @@
+name: Monitor - Monitoraggio reputazione online
+
+# Per ora parte SOLO a mano (workflow_dispatch qui sotto): il cron
+# giornaliero e' commentato, non rimosso.
+# Togliere il commento alle due righe "schedule"/"cron" sotto per farlo
+# scattare da solo ogni giorno alle 8:00 UTC.
+on:
+  # schedule:
+  #   - cron: "0 8 * * *"
+  workflow_dispatch: {}
+
+# "contents: write" e' necessario per l'ultimo step del job: senza questo
+# permesso, il push di monitoring/history.json alla fine del job fallirebbe.
+# monitoring/history.json è un file che tiene traccia dei risultati di ogni esecuzione.
+permissions:
+  contents: write
+
+jobs:
+  # ============================================================
+  # JOB: MONITOR (Fase 3 - monitoraggio continuo del sentiment)
+  # ============================================================
+  monitor:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          cache-dependency-path: "Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops/requirements.txt"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      # monitor.py: scarica testi pubblici reali da Mastodon, 
+      # li classifica con il modello attuale, calcola la quota di sentiment 
+      # negativo del batch e la confronta con la baseline storica salvata 
+      # in monitoring/history.json. Non richiede nessun secret:
+      # per la timeline pubblica di Mastodon non serve token.
+      - name: Esegui monitoraggio
+        run: python monitor.py
+      # monitor.py aggiorna monitoring/history.json in locale sul runner, ma
+      # quella modifica sparirebbe alla fine del job se non venisse
+      # ricommittata: questo step la salva davvero nel repository, cosi' la
+      # prossima esecuzione trova la storia di oggi come baseline.
+      - name: Salva la storia aggiornata nel repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add monitoring/history.json
+          git diff --quiet --cached || git commit -m "chore: aggiorna storia monitoraggio sentiment"
+          git push

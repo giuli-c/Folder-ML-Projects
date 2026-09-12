@@ -1,15 +1,18 @@
 from transformers import pipeline
 
+from config import MODEL_NAME
+
 
 class SentimentPredictor:
-    """Carica il modello una sola volta ed espone un'unica funzione di predizione.
+    """
+    Carica il modello una sola volta ed espone un'unica funzione di predizione.
 
     Usata sia da app.py (demo Gradio) sia da tests/test_smoke.py, cosi' la logica
     di caricamento del modello e di normalizzazione dell'output vive in un solo
     posto invece di essere duplicata in due file diversi del repository.
     """
 
-    def __init__(self, model_name: str = "cardiffnlp/twitter-roberta-base-sentiment-latest"):
+    def __init__(self, model_name: str = MODEL_NAME):
         self.model_name = model_name
         self._pipeline = pipeline("sentiment-analysis", model=model_name, tokenizer=model_name)
 

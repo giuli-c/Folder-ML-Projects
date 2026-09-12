@@ -7,3 +7,4 @@ pandas
 numpy
 gradio
 huggingface_hub
+requests

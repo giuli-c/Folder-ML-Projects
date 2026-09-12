@@ -1,8 +1,7 @@
 name: CI - Monitoraggio reputazione online
 
 # Si attiva solo quando un push o una pull request su main tocca qualcosa
-# dentro sentiment_reputation_mlops/, non ad ogni modifica di un progetto
-# qualsiasi del monorepo.
+# dentro sentiment_reputation_mlops/.
 on:
   push:
     branches: [ main ]
@@ -14,15 +13,22 @@ on:
       - "Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops/**"
 
 jobs:
+  # ============================================================
+  # JOB 1: TEST (Fase 2 - test di integrazione)
+  # ============================================================
+  # Gira ad ogni push/PR su main. Se questo job fallisce, il job "deploy"
+  # sotto non parte nemmeno (vedi "needs: test").
   test:
     runs-on: ubuntu-latest
     defaults:
       run:
-        # Tutti gli step "run" partono da qui, non dalla radice del repository:
-        # e' questa la cartella dove vivono requirements.txt e tests/.
+        # Tutti gli step "run" partono da qui, non dalla radice del repository.
         working-directory: "Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops"
     steps:
+      # Scarica il codice del repository sul runner GitHub.
       - uses: actions/checkout@v4
+      # Installa Python 3.10 e abilita la cache pip (le run successive non
+      # riscaricano da zero torch/transformers, che sono pesanti).
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -33,5 +39,40 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
+      # Esegue tests/test_smoke.py e tests/test_app.py: se una sola
+      # assertion fallisce, l'intero job (e quindi anche il deploy) fallisce.
       - name: Run tests
         run: pytest -q
+
+  # ============================================================
+  # JOB 2: DEPLOY (Fase 2/3 - deploy dell'applicazione su HuggingFace)
+  # ============================================================
+  deploy:
+    needs: test
+    # Solo su push diretto a main, mai sulle pull request (i secret non sono
+    # comunque disponibili alle PR da fork, ed e' corretto cosi': in questo modo 
+    # non si deploya codice non ancora mergiato/revisionato).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          cache-dependency-path: "Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops/requirements.txt"
+      # Qui basta huggingface_hub, non servono le altre librerie
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install huggingface_hub
+      # deploy_to_hf.py pubblica app.py/predictor.py/requirements.txt/README.md
+      # come HuggingFace Space (creandolo al primo deploy se non esiste ancora).
+      # HF_TOKEN viene letto dal secret del repository GitHub
+      - name: Deploy su HuggingFace Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python deploy_to_hf.py

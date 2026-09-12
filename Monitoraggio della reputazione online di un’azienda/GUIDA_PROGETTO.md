@@ -2,7 +2,7 @@
 
 > **Azienda**: MachineInnovators Inc. — sviluppo di applicazioni di machine learning scalabili e pronte per la produzione
 > **Problema**: monitorare manualmente il sentiment degli utenti sui social media è inefficiente, soggetto a errori umani e troppo lento per intervenire prima che un calo di reputazione diventi un problema pubblico
-> **Modello richiesto**: [`cardiffnlp/twitter-roberta-base-sentiment-latest`](https://huggingface.co/cardiffnlp/twitter-roberta-base-sentiment-latest) — usato in inferenza diretta, **senza fine-tuning**
+> **Modello richiesto**: [`cardiffnlp/twitter-roberta-base-sentiment-latest`](https://huggingface.co/cardiffnlp/twitter-roberta-base-sentiment-latest) — usato in inferenza diretta, **senza fine-tuning** nel notebook
 > **Dataset pubblico**: [`cardiffnlp/tweet_eval`](https://huggingface.co/datasets/cardiffnlp/tweet_eval), subtask `sentiment`
 > **File notebook**: `Monitoraggio_Reputazione_Online_MLOps.ipynb`
 > **Repository CI/CD**: [`sentiment_reputation_mlops/`](sentiment_reputation_mlops/)
@@ -16,17 +16,14 @@
 5. [Analisi esplorativa e distribuzione delle classi](#5-analisi-esplorativa-e-distribuzione-delle-classi)
 6. [Caricamento del modello e funzioni modulari](#6-caricamento-del-modello-e-funzioni-modulari)
 7. [Inferenza e valutazione delle performance](#7-inferenza-e-valutazione-delle-performance)
-8. [Instradamento a revisione umana (human-in-the-loop)](#8-instradamento-a-revisione-umana-human-in-the-loop)
-9. [Monitoraggio continuo della reputazione](#9-monitoraggio-continuo-della-reputazione)
-10. [Monitoraggio del modello e regole di retraining](#10-monitoraggio-del-modello-e-regole-di-retraining)
-11. [Pipeline CI/CD e repository `sentiment_reputation_mlops/`](#11-pipeline-cicd-e-repository-sentiment_reputation_mlops)
-12. [Limiti e sviluppi futuri](#12-limiti-e-sviluppi-futuri)
+8. [Pipeline CI/CD e sistema di monitoraggio](#8-pipeline-cicd-e-sistema-di-monitoraggio)
+9. [Limiti e sviluppi futuri](#9-limiti-e-sviluppi-futuri)
 
 ## 1. Obiettivo e contesto
 
-La traccia chiede di **usare** un modello di sentiment analysis già pronto (non di addestrarne uno), valutarlo su un dataset pubblico, e costruire attorno ad esso l'infrastruttura MLOps che serve a un'azienda per monitorare la propria reputazione online nel tempo: qualità del dato, valutazione, instradamento a revisione umana, monitoraggio continuo, regole di retraining, pipeline CI/CD.
+La traccia si divide in tre fasi: **Fase 1**, usare (non addestrare da zero) un modello di sentiment analysis già pronto su un dataset pubblico; **Fase 2**, costruire una pipeline CI/CD automatizzata per training, test di integrazione e deploy dell'applicazione su HuggingFace; **Fase 3**, un sistema di monitoraggio continuo delle performance del modello e del sentiment rilevato, con deploy su HuggingFace (facoltativo).
 
-Il notebook non addestra nulla da zero: il valore aggiunto è nel valutare criticamente un modello pre-addestrato e progettare il "contorno" operativo che lo rende utilizzabile in produzione in modo responsabile.
+Il **notebook** copre la Fase 1 per intero (caricamento modello e dataset, valutazione, documentazione dei risultati) e contiene il link al repository GitHub richiesto dalla consegna. Le Fasi 2 e 3 **non sono simulate nel notebook**: sono implementate come codice reale nella repository — pipeline GitHub Actions, script Python eseguibili, test — descritto nella sezione 8 di questa guida e nella sezione 10 del notebook. Questa separazione è intenzionale: la consegna chiede una pipeline e un sistema di monitoraggio automatizzati, non una loro rappresentazione dentro un notebook.
 
 ## 2. Setup ambiente e installazione librerie
 
@@ -38,7 +35,7 @@ Il notebook è pensato per Google Colab, ma gira anche in un ambiente Jupyter lo
 
 ## 3. Configurazione centralizzata (`Config`)
 
-Una `dataclass Config` raccoglie in un solo punto **tutti** i parametri del progetto — non solo seed/modello/dataset/batch size, ma anche le soglie operative usate più avanti (F1 minimo, confidence media minima, soglia di revisione umana, incremento massimo di sentiment negativo, numero di settimane "correnti" per il monitoraggio):
+Una `dataclass Config` raccoglie in un solo punto i parametri usati dal notebook (seed, modello, dataset, dimensione del campione di valutazione, batch size):
 
 ```python
 @dataclass
@@ -50,15 +47,9 @@ class Config:
     max_eval_samples: int = 1000
     batch_size: int = 32
     label_map: Dict[int, str] = None
-
-    min_macro_f1: float = 0.70
-    min_average_confidence: float = 0.60
-    max_negative_share_increase: float = 0.15
-    low_confidence_review_threshold: float = 0.60
-    n_current_weeks_for_monitoring: int = 1
 ```
 
-Cambiare modello, campione di valutazione o una qualunque soglia operativa richiede di toccare un solo punto del notebook, non di rincorrere costanti sparse in celle diverse.
+Cambiare modello o campione di valutazione richiede di toccare un solo punto del notebook, non di rincorrere costanti sparse in celle diverse. La repository CI/CD ha una propria configurazione centralizzata equivalente (`sentiment_reputation_mlops/config.py`, sezione 8) — indipendente da questa perché il notebook gira da solo su Colab, senza accesso ai file della repository.
 
 ## 4. Dataset: caricamento e controllo qualità
 
@@ -84,7 +75,6 @@ Le funzioni di utilità (sezione 7 del notebook) separano le responsabilità e v
 - `predict_sentiment` — inferenza in batch, restituisce predizioni e confidence.
 - `evaluate_sentiment_model` — calcola accuracy, precision/recall/F1 macro e weighted.
 - `sample_for_test` — campiona il test set per rendere l'esecuzione sostenibile.
-- `evaluate_negative_share_alert` — la logica di alert sul sentiment negativo (dettagliata in sezione 9), riusata sia sui dati reali sia su uno scenario dimostrativo sintetico.
 
 ## 7. Inferenza e valutazione delle performance
 
@@ -102,58 +92,68 @@ Per classe: `negative` è la più riconosciuta (F1 = 0,73, recall = 0,79), `posi
 
 Dalla matrice di confusione: gli errori passano soprattutto attraverso `neutral` (110 `neutral`→`negative`, 63 `negative`→`neutral`, 59 `neutral`→`positive`, 53 `positive`→`neutral`); la confusione diretta `positive`↔`negative` è molto bassa (6 e 9 casi). Dal grafico di confidence: `positive` e `negative` hanno confidence generalmente alta, `neutral` ha una distribuzione molto più dispersa — il modello è meno sicuro proprio dove sbaglia di più.
 
-## 8. Instradamento a revisione umana (human-in-the-loop)
+## 8. Pipeline CI/CD e sistema di monitoraggio
 
-Una confidence alta non garantisce una previsione corretta. La coda di revisione (`review_queue_df`) seleziona **tutti e tre** i sentiment predetti con confidence sotto `cfg.low_confidence_review_threshold`, non solo `negative`: limitarsi a `negative` lascerebbe fuori proprio gli errori più pericolosi per il monitoraggio reputazionale — un testo `negative` reale che il modello etichetta, con poca sicurezza, come `neutral` o `positive`, e che quindi non genererebbe mai un alert.
-
-**Validazione della soglia** (possibile solo qui, dove il benchmark porta con sé l'etichetta vera `sentiment`, che in produzione non esisterà mai): il tasso di errore nella coda di revisione è del 48,57%, contro il 30,00% medio sull'intero campione — 1,6x più alto. Conferma che la confidence è un segnale utile, ma non un rilevatore di errori affidabile al 100%: più della metà dei testi in coda sono in realtà predizioni corrette.
-
-**In produzione**, dove questa validazione non è possibile (nessuna etichetta vera per i tweet reali), la coda di revisione andrebbe esportata in CSV (testo, sentiment predetto, confidence, colonna vuota `human_label`) per un revisore umano — un passaggio che il notebook non può eseguire davvero (gira in batch). Le correzioni umane accumulate nel tempo costituirebbero il dataset etichettato specifico dell'azienda necessario per un eventuale fine-tuning futuro.
-
-## 9. Monitoraggio continuo della reputazione
-
-Il dataset non ha una dimensione temporale reale: vengono generate date fittizie (`pd.date_range`, frequenza oraria a partire dal 1° gennaio 2026) solo per simulare come si costruirebbe una dashboard con dati reali da API social o strumenti di listening. I testi vengono aggregati per settimana (~6 settimane con 1.000 campioni) e per ciascuna si calcola la quota di `negative`/`neutral`/`positive` (`unstack(fill_value=0)` garantisce che ogni settimana compaia con tutte e tre le classi, anche a 0, evitando che una settimana senza `negative` sparisca silenziosamente dalla serie).
-
-**Alert sul sentiment negativo** (`evaluate_negative_share_alert`): la baseline (media + 1 deviazione standard) si calcola **solo sulle settimane precedenti** al periodo corrente (l'ultima settimana), non sull'intera serie — usare l'intera serie per giudicare il suo stesso ultimo punto sarebbe circolare, e renderebbe l'alert meno sensibile proprio quando servirebbe di più. Vengono restituiti due segnali indipendenti: un alert **statistico** (quota corrente > baseline + 1 std) e un alert di **business** (incremento assoluto > `cfg.max_negative_share_increase`, 15% di default).
-
-Con il campione usato in questa esecuzione l'alert **statistico** scatta già (la quota corrente supera la baseline storica), mentre quello di **business** no (l'incremento resta sotto i 15 punti percentuali): un segnale borderline, non ancora una crisi reputazionale netta — ma non è garantito che il risultato sia lo stesso a ogni esecuzione, dato che le settimane simulate dipendono dalla data corrente (`pd.Timestamp.now()`). Per verificare che la logica riconosca anche un caso inequivocabile, lo stesso tipo di scenario **sintetico**, con un incremento netto che supera entrambe le soglie, viene riusato più avanti come terzo scenario (`REPUTATION_ALERT`) nella sezione 12.1, invece di restare una dimostrazione isolata.
-
-## 10. Monitoraggio del modello e regole di retraining
-
-La tabella `monitoring_summary` (costruita dalla funzione riusabile `build_monitoring_summary`, sezione 7) combina quattro controlli, tutti collegati alle soglie di `Config`: F1 macro minimo, confidence media minima, quota di sentiment negativo (soglia statistica), incremento di sentiment negativo (soglia di business). Separa concettualmente due problemi diversi: un calo di F1 macro segnala che il **modello** potrebbe non essere più affidabile (possibile retraining); un aumento del sentiment negativo con un modello che funziona bene segnala una **vera crisi reputazionale** (va avvisato il team business, non riaddestrato il modello).
-
-**Tre scenari sintetici** (sezione 12.1) dimostrano che ciascuno dei tre stati non-`OK` (`RETRAINING_CANDIDATE`, `REVIEW_REQUIRED`, `REPUTATION_ALERT`) scatta davvero quando le condizioni si verificano, isolando una causa alla volta — lo stesso principio del già citato scenario sintetico dell'alert in sezione 9.
-
-**Da stato a azione (sezione 12.2)**: ciascuno dei tre stati è collegato a un'azione concreta, e ognuna parte solo se lo stato **reale** (non lo scenario sintetico) calcolato in `monitoring_summary` lo richiede — un booleano dedicato per azione (`needs_retraining`, `needs_review`, `needs_reputation_check`) legge la colonna `status` della tabella reale. Con i dati di questa esecuzione solo `needs_reputation_check` risulta vero; per le altre due un flag esplicito (`FORCE_RETRAINING_DEMO`, `FORCE_REVIEW_DEMO = True`, sullo stesso principio di `RUN_GRADIO_DEMO` usato più avanti nel notebook, sezione 14) forza comunque la dimostrazione, ed è commentato come "da rimuovere in produzione". Le azioni di revisione umana e di analisi reputazionale non ricalcolano nulla: riusano rispettivamente `review_queue_df` (sezione 8) e i testi negativi di `monitor_df` nella settimana corrente (sezione 9).
-
-**Il retraining, reso eseguibile (sezioni 12.3-12.5)**: `get_retraining_dataset()` cerca un dataset di correzioni umane (`human_corrected_df`, che in produzione arriverebbe dalla sezione 8) e, non trovandolo in questa esecuzione, usa come default un campione stratificato di `train_df`. Su quel dataset viene eseguito un **fine-tuning dimostrativo minimo** (1 epoca, batch size 8, learning rate 2e-5, tramite `transformers.Trainer`) su una **copia separata** del modello (`retrain_model`): `model`/`sentiment_pipeline`, usati nel resto del notebook, non vengono toccati. Una cella finale confronta le metriche prima/dopo sullo stesso `sample_test_df`. Resta un meccanismo dimostrativo, non un vero processo di retraining di produzione: il trigger `needs_retraining` esiste ma è coperto dal flag di demo, nessuna validazione decide se il modello riaddestrato è davvero migliore prima di sostituire quello in uso, e il miglioramento non è garantito vista la dimensione ridotta del dataset e delle epoche.
-
-## 11. Pipeline CI/CD e repository `sentiment_reputation_mlops/`
-
-La consegna richiede una repository GitHub pubblica con codice documentato. I file applicativi vivono come file veri nella cartella [`sentiment_reputation_mlops/`](sentiment_reputation_mlops/), non come stringhe dentro il notebook. Il workflow `ci.yml`, invece, sta alla **radice del repository** GitHub (non dentro questa cartella): GitHub Actions legge i workflow solo da `.github/workflows/` nella vera radice del repository ricevuto da un push, mai da una sottocartella — se restasse annidato qui, la pipeline non partirebbe mai.
+Questa sezione copre le Fasi 2 e 3 della consegna. Tutto il codice descritto qui è reale ed eseguibile, vive nella repository GitHub — non nel notebook — nella cartella [`sentiment_reputation_mlops/`](sentiment_reputation_mlops/) e nei workflow alla radice del repository:
 
 ```
 <radice del repository GitHub>
-├── .github/workflows/ci.yml   # radice del repo: qui GitHub Actions lo trova davvero;
-│                               # un filtro `paths` lo fa scattare solo per questa cartella
+├── .github/workflows/
+│   ├── ci.yml                # job "test" (pytest) + job "deploy" (HuggingFace Space, dopo i test)
+│   ├── train.yml             # job "train", trigger manuale (workflow_dispatch)
+│   └── monitor.yml           # job "monitor", schedulato (cron) + trigger manuale
 └── sentiment_reputation_mlops/
-    ├── requirements.txt
+    ├── requirements.txt      # dipendenze del repository (transformers, gradio, requests, ecc.)
+    ├── config.py             # costanti centralizzate: modello, dataset, soglie, repo HuggingFace
     ├── predictor.py          # SentimentPredictor: carica il modello una volta, espone predict()
-    ├── app.py                # demo Gradio, usa SentimentPredictor
-    ├── conftest.py            # vuoto: serve solo perche' pytest trovi predictor.py da tests/
+    ├── app.py                # demo Gradio, usa SentimentPredictor da predictor.py
+    ├── train.py              # retraining su dati mai visti dal modello base + gate di promozione
+    ├── monitor.py            # monitoraggio del sentiment su post reali (Mastodon), con baseline storica
+    ├── deploy_to_hf.py       # pubblica questa cartella come HuggingFace Space
+    ├── README.md             # frontmatter richiesto da HuggingFace Space (sdk: gradio, app_file: app.py)
+    ├── conftest.py           # vuoto: serve solo perche' pytest trovi predictor.py da tests/
     ├── .gitignore
+    ├── monitoring/history.json  # baseline storica, aggiornata automaticamente dal job "monitor"
     └── tests/
-        └── test_smoke.py     # test_model_loads + test_known_examples
+        ├── test_smoke.py     # test_model_loads, test_known_examples, casi limite, schema di output
+        └── test_app.py       # verifica che app.py (Gradio) funzioni, non solo predictor.py
 ```
 
-`app.py` e `tests/test_smoke.py` importano entrambi `SentimentPredictor` da `predictor.py`, invece di caricare il modello ciascuno per conto proprio — stesso principio di modularità della sezione 6/7 del notebook. `conftest.py` è vuoto ma necessario: senza di esso, pytest non aggiungerebbe la radice del repository a `sys.path`, e l'import di `predictor` da dentro `tests/` fallirebbe. Il workflow `ci.yml` installa le dipendenze (con cache pip) ed esegue `pytest` ad ogni push o pull request su `main` che tocchi `sentiment_reputation_mlops/` (`working-directory` nel workflow punta lì, così i comandi girano nella cartella giusta invece che nella radice del repo).
+Il workflow `ci.yml` sta alla **vera radice del repository** GitHub, non dentro `sentiment_reputation_mlops/`: GitHub Actions legge i workflow solo da `.github/workflows/` nella radice del repository ricevuto da un push, mai da una sottocartella — se restasse annidato nella cartella applicativa, la pipeline non partirebbe mai. Un filtro `paths` lo fa comunque scattare solo quando cambia qualcosa dentro `sentiment_reputation_mlops/`.
 
-**Prima della consegna**: creare il repository, pushare il contenuto di `sentiment_reputation_mlops/`, e incollare il link reale nella cella `GITHUB_REPOSITORY_URL` in cima al notebook (oggi contiene ancora un placeholder).
+### `config.py` — configurazione centralizzata della repository
 
-## 12. Limiti e sviluppi futuri
+Stesso principio della `Config` del notebook (sezione 3), ma per il codice che vive nella repository: nome del modello, dataset di retraining, dataset di benchmark originale, repository HuggingFace di destinazione (Space e modello), soglie di tolleranza e di alert. Un solo punto da modificare invece di costanti duplicate in `predictor.py`, `train.py`, `deploy_to_hf.py`, `monitor.py`.
 
-- Il modello è usato così com'è, senza fine-tuning su dati reali dell'azienda — le prestazioni misurate su `tweet_eval` sono un indicatore generale, non una garanzia sul dominio specifico di MachineInnovators.
-- Il monitoraggio temporale è simulato su dati statici, non su un vero flusso nel tempo.
+### Job `test` (Fase 2 — test di integrazione)
+
+Installa le dipendenze ed esegue `pytest` ad ogni push o pull request su `main` che tocchi `sentiment_reputation_mlops/`. `app.py` e `tests/test_smoke.py` importano entrambi `SentimentPredictor` da `predictor.py`, che accentra il caricamento del modello in un solo posto — `conftest.py` (vuoto) è necessario perché pytest aggiunga la radice del repository a `sys.path`, altrimenti l'import di `predictor` da dentro `tests/` fallirebbe con `ModuleNotFoundError`.
+
+`tests/test_smoke.py` verifica: che il modello carichi e restituisca il formato atteso; che due frasi non ambigue vengano classificate nella classe corretta (piccolo test di regressione); lo **schema di output** (etichetta tra le tre valide, confidence in `[0, 1]`) su casi limite — stringa vuota, testo molto lungo (oltre i 128 token di truncation), lingua diversa dall'inglese, emoji. `tests/test_app.py` verifica che anche `app.py` — non solo `predictor.py` — funzioni davvero, importando il modulo e chiamando la sua funzione `predict()`.
+
+### Job `deploy` (Fase 2/3 — deploy su HuggingFace)
+
+`needs: test`, gira solo su push diretto a `main` (mai sulle pull request — i secret non sono comunque disponibili alle PR da fork, ed è corretto così: non si deploya codice non ancora mergiato). Usa `huggingface_hub` (`deploy_to_hf.py`) per pubblicare `app.py`/`predictor.py`/`requirements.txt`/`README.md` come HuggingFace Space, creandolo al primo deploy se non esiste ancora (`create_repo(..., exist_ok=True)`). Richiede il secret `HF_TOKEN` (un token HuggingFace con permessi di scrittura) configurato su GitHub in *Settings → Secrets and variables → Actions*.
+
+### Job `train` (Fase 2 — training automatizzato)
+
+Trigger manuale (`workflow_dispatch`, dalla tab *Actions* di GitHub): un fine-tuning, anche piccolo, su runner CPU gratuiti può richiedere diversi minuti, e non ha senso farlo scattare per un commit qualsiasi. Esegue `train.py`, che riallena il modello su **`mteb/tweet_sentiment_extraction`** — deliberatamente **diverso** dal dataset di valutazione (`tweet_eval`), perché il modello base è già stato fine-tuned proprio su TweetEval per il task di sentiment (lo dice la sua model card su HuggingFace): riallenarlo sugli stessi dati non introdurrebbe nessuna informazione nuova. Il nuovo dataset usa lo stesso schema di etichette (0=negative, 1=neutral, 2=positive), quindi nessun remapping aggiuntivo.
+
+Il confronto prima/dopo viene fatto su **due** test set: quello del dataset nuovo (misura se il fine-tuning aiuta davvero su dati mai visti) e un campione di `tweet_eval` (controllo di regressione, per verificare che il modello non abbia "dimenticato" quello che sapeva già fare bene — *catastrophic forgetting*). Il modello riaddestrato viene pubblicato su un repository HuggingFace dedicato (`RETRAINED_MODEL_REPO_ID`) **solo se** il calo di F1 macro sul benchmark originale resta entro `REGRESSION_TOLERANCE`: altrimenti lo script si interrompe con un errore esplicito e non pubblica nulla. La promozione del modello candidato a "modello in produzione" (aggiornare `MODEL_NAME` in `config.py`) resta comunque una decisione manuale, non automatica.
+
+### Job `monitor` (Fase 3 — monitoraggio continuo)
+
+Parte solo a mano per ora (`workflow_dispatch`, tab Actions) — il cron
+giornaliero è nel file ma commentato, pronto da riattivare togliendo il
+commento. Esegue `monitor.py`, che scarica testi pubblici reali dalla timeline pubblica di un'istanza Mastodon (nessuna autenticazione richiesta) — a differenza del retraining, qui **non serve nessuna etichetta**: il monitoraggio del drift di sentiment si basa solo sulle predizioni del modello su testo fresco, non sull'accuratezza rispetto a una verità nota. I testi vengono classificati con il modello attuale (`predictor.SentimentPredictor`), si calcola la quota di sentiment negativo del batch e la si confronta con una baseline storica (media + 1 deviazione standard delle esecuzioni precedenti — stessa logica statistica di una baseline classica, ma su dati reali accumulati nel tempo). Il risultato di ogni esecuzione viene salvato in `monitoring/history.json`, che il workflow **ricommitta nel repository** ad ogni run: è così che la baseline cresce davvero nel tempo, invece di ripartire da zero ad ogni esecuzione. Se la quota supera la soglia statistica o l'incremento supera la soglia di business, il job stampa un'annotazione `::warning::` visibile nella pagina del job GitHub Actions.
+
+**Prima della consegna**: creare il repository, pushare tutto il contenuto (inclusi i workflow alla radice), configurare il secret `HF_TOKEN`, e incollare il link reale nella cella `GITHUB_REPOSITORY_URL` in cima al notebook (oggi contiene ancora un placeholder).
+
+## 9. Limiti e sviluppi futuri
+
+- Il modello è usato così com'è, senza fine-tuning su dati reali dell'azienda nella valutazione principale — le prestazioni misurate su `tweet_eval` sono un indicatore generale, non una garanzia sul dominio specifico di MachineInnovators.
+- Il job `train` allena su un dataset pubblico generico (`tweet_sentiment_extraction`), non su menzioni reali dell'azienda: risolve il problema di riallenare su dati già visti dal modello, ma non quello di specializzarlo sul dominio specifico di MachineInnovators — servirebbero correzioni umane reali o dati aziendali etichettati, che oggi non esistono.
+- Il job `monitor` osserva un campione generico della timeline pubblica di Mastodon, non menzioni reali dell'azienda (che richiederebbero API social con accesso a pagamento, es. Twitter/X, o filtri per hashtag/keyword specifici — facilmente aggiungibili in futuro).
 - La regola di alert (media + 1 deviazione standard) resta un'euristica semplice, non un test statistico di drift rigoroso (es. Kolmogorov-Smirnov, Population Stability Index).
-- La coda di revisione umana non ha un ciclo di chiusura reale in questo notebook (nessun export CSV effettivo, nessun merge delle correzioni) — è descritto come si farebbe in produzione, non implementato end-to-end. Di conseguenza, il fine-tuning dimostrativo di sezione 12.3 non trova mai un `human_corrected_df` reale e ricade sempre sul dataset di default.
-- Il retraining (sezioni 12.3-12.5) è eseguibile e collegato a un trigger reale (`needs_retraining`, derivato da `monitoring_summary`), ma resta dimostrativo: un flag esplicito (`FORCE_RETRAINING_DEMO`) lo forza comunque quando lo stato reale non lo richiederebbe, e mancano versionamento di dati/modello, tracciamento degli esperimenti, e una validazione automatica che confronti il modello riaddestrato con quello in uso prima di sostituirlo.
+- Il job `deploy` pubblica `app.py` su HuggingFace Space ad ogni push su `main` che superi i test, ma senza canary/rollback: se una modifica passa i test ma si comporta male in produzione, non c'è un meccanismo automatico per tornare alla versione precedente.
+- Manca versionamento sistematico di dati/modello e tracciamento degli esperimenti (es. MLflow, Weights & Biases) per confrontare più run di training nel tempo.
