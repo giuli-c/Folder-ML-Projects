@@ -16,8 +16,14 @@ I progetti coprono casi d'uso diversi: classificazione tabellare, regressione, c
 |-- Cyber Security per la sanità tramite Reinforcement Learning/
 |   |-- Cyber_Security_Sanita_Reinforcement_Learning.ipynb
 |   `-- GUIDA_PROGETTO.md
+|-- Data Augmentation per la sicurezza delle centrali elettriche/
+|   |-- Data_Augmentation_Sicurezza_Centrali_Elettriche.ipynb
+|   `-- GUIDA_PROGETTO.md
 |-- Modello previsionale mercato immobiliare/
 |   |-- Modello_Previsionale_Mercato_Immobiliare.ipynb
+|   `-- GUIDA_PROGETTO.md
+|-- Ottimizzazione rete per il settore food/
+|   |-- Classificazione_Cibo_GourmetAI.ipynb
 |   `-- GUIDA_PROGETTO.md
 |-- Riconoscimento di fiori/
 |   |-- Riconoscimento di fiori per AgriTech.ipynb
@@ -96,6 +102,31 @@ Il notebook implementa una CNN con PyTorch e confronta piu' esperimenti: baselin
 File principali:
 - `Rinoscimento_animali_CIFAR10.ipynb`
 - `GUIDA_PROGETTO_CIFAR.md`
+
+### 7. Ottimizzazione rete per il settore food
+
+Progetto di computer vision per GourmetAI Inc.: classificazione multiclasse di immagini di cibo
+(14 categorie di piatti) tramite transfer learning con EfficientNet-B0 (PyTorch + `timm`).
+
+Il notebook include esplorazione del dataset (EDA), data augmentation su più livelli, cinque
+esperimenti incrementali (baseline, fine-tuning progressivo, fine-tuning completo, augmentation
+forte, Mixup), metriche multiclasse (F1 macro/weighted, top-3 accuracy, matrice di confusione
+normalizzata con analisi delle coppie di classi più confuse) e un'analisi qualitativa degli errori
+sul test set.
+
+File principali:
+- `Classificazione_Cibo_GourmetAI.ipynb`
+- `GUIDA_PROGETTO.md`
+
+### 8. Data Augmentation per la sicurezza delle centrali elettriche
+
+Progetto di computer vision per CyberEye Solutions: verifica se una pipeline di Data Augmentation generativa (captioning con BLIP, parafrasi con Qwen2.5-1.5B-Instruct, generazione di immagini con sdxl-turbo) applicata al dataset Oxford-IIIT Pet (37 razze) migliora un classificatore EfficientNet-B0 (PyTorch + `timm`) rispetto a un training solo su dati reali.
+
+Il notebook confronta, a parita' di architettura e configurazione (learning rate differenziati, dropout, weight decay, label smoothing), un modello Baseline (solo immagini reali) e un modello Augmented (reali + sintetiche). Include valutazione della qualita' dei sintetici tramite CLIP score, metriche multiclasse (accuracy, top-3 accuracy, precision/recall/F1 macro e weighted, matrice di confusione), error analysis caso per caso e un intervallo di confidenza bootstrap sulla differenza di accuracy tra i due modelli.
+
+File principali:
+- `Data_Augmentation_Sicurezza_Centrali_Elettriche.ipynb`
+- `GUIDA_PROGETTO.md`
 
 ## Come utilizzare il repository
 
