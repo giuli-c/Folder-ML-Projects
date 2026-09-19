@@ -2,6 +2,7 @@ transformers
 datasets
 evaluate
 torch
+accelerate>=1.1.0
 scikit-learn
 pandas
 numpy

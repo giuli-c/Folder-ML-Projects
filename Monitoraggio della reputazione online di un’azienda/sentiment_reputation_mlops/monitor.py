@@ -9,7 +9,8 @@ Ogni esecuzione:
 2. li classifica con il modello attuale (predictor.SentimentPredictor);
 3. calcola la quota di sentiment negativo del batch;
 4. la confronta con la baseline storica;
-5. salva il risultato in monitoring/history.json, che il workflow ricommitta
+5. salva la coda di revisione (senza approvare etichette) e il risultato
+   in monitoring/history.json, che il workflow ricommitta
    nel repository: senza questo passaggio ogni esecuzione ripartirebbe da
    zero, senza nessuna storia su cui costruire una baseline.
 """
@@ -24,17 +25,20 @@ import requests
 
 from config import MASTODON_INSTANCE, MAX_NEGATIVE_SHARE_INCREASE, MIN_HISTORY_FOR_BASELINE, N_POSTS
 from predictor import SentimentPredictor
+from review_data import enqueue
+from config import MONITOR_KEYWORDS, REVIEW_CONFIDENCE_THRESHOLD, REVIEW_AUDIT_RATE
 
 HISTORY_PATH = Path(__file__).parent / "monitoring" / "history.json"
 
 
-def fetch_recent_posts(instance: str, limit: int) -> list:
+def fetch_recent_posts(instance: str, limit: int, keywords=None) -> list:
     """
     Scarica gli ultimi `limit` post dalla timeline pubblica federata di Mastodon,
     che include contenuti pubblici provenienti sia dall'istanza corrente sia
     da altre istanze con cui essa comunica.
-    Ripulisce l'HTML del campo "content" e tiene solo i
-    post marcati come inglese (il modello e' addestrato solo su inglese).
+    Ripulisce HTML e tiene solo post esplicitamente marcati come inglesi,
+    escludendo boost e applicando le eventuali parole chiave. Restituisce
+    testo e metadati necessari alla revisione.
     """
     try:
         response = requests.get(
@@ -52,12 +56,16 @@ def fetch_recent_posts(instance: str, limit: int) -> list:
 
     texts = []
     for post in response.json():
-        if post.get("language") not in (None, "en"):
+        if post.get("language") != "en" or post.get("reblog") is not None:
             continue
         text = re.sub(r"<[^>]+>", " ", post.get("content", ""))
         text = html.unescape(text).strip()
-        if text:
-            texts.append(text)
+        if text and (not keywords or any(word.casefold() in text.casefold() for word in keywords)):
+            texts.append({
+                "post_id": post.get("uri") or f"{instance}/statuses/{post['id']}",
+                "text": text, "url": post.get("url"), "instance": instance,
+                "language": "en",
+            })
     return texts
 
 
@@ -79,13 +87,21 @@ def main() -> None:
     esecuzione dal job schedulato (monitor.yml), non per girare in loop.
     """
     print(f"Scarico gli ultimi {N_POSTS} post pubblici da {MASTODON_INSTANCE}...")
-    texts = fetch_recent_posts(MASTODON_INSTANCE, N_POSTS)
-    if not texts:
-        raise SystemExit("Nessun testo in inglese recuperato: impossibile monitorare in questa esecuzione.")
+    posts = fetch_recent_posts(MASTODON_INSTANCE, N_POSTS, MONITOR_KEYWORDS)
+    if not posts:
+        print("Nessun post inglese pertinente: nessun aggiornamento di storia o coda.")
+        return
+    texts = [post["text"] for post in posts]
+    scope = "keywords:" + "|".join(sorted(MONITOR_KEYWORDS)) if MONITOR_KEYWORDS else "general_mastodon"
+    print("Ambito monitorato:", scope)
     print(f"Testi utilizzabili (inglese, non vuoti): {len(texts)}")
 
     predictor = SentimentPredictor()
-    predictions = [predictor.predict(text)["sentiment"] for text in texts]
+    results = [predictor.predict(text) for text in texts]
+    added = enqueue(posts, results, predictor.model_name, scope,
+                    REVIEW_CONFIDENCE_THRESHOLD, REVIEW_AUDIT_RATE)
+    print(f"Coda revisione: {added} nuovi post, nessuna approvazione automatica.")
+    predictions = [result["sentiment"].lower() for result in results]
     negative_share = predictions.count("negative") / len(predictions)
     print(f"Quota di sentiment negativo in questo batch: {negative_share:.2%}")
 
@@ -93,7 +109,8 @@ def main() -> None:
     # il batch corrente.
     history = load_history()
     # prende le settimane negative in history
-    baseline_shares = [record["negative_share"] for record in history]
+    baseline_shares = [record["negative_share"] for record in history
+                       if record.get("scope", "general_mastodon") == scope]
 
     if len(baseline_shares) >= MIN_HISTORY_FOR_BASELINE:
         baseline_mean = mean(baseline_shares) # calcola la media
@@ -130,6 +147,7 @@ def main() -> None:
         {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "n_posts": len(predictions),
+            "scope": scope,
             "negative_share": negative_share,
         }
     )

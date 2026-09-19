@@ -31,9 +31,24 @@ RETRAINED_MODEL_REPO_ID = "GiuliaC/sentiment-reputation-monitor-retrained"
 REGRESSION_TOLERANCE = 0.02
 
 # ---------- MONITOR.PY
-MASTODON_INSTANCE = "https://mastodon.social"
+# mastodon.social (e mastodon.online, stessa organizzazione) hanno disattivato
+# l'accesso anonimo alla timeline pubblica (l'API risponde 422 "This method
+# requires an authenticated user", sia per local=true sia local=false) -
+# verificato il 2026-09-18. mstdn.social resta accessibile anonimamente;
+# se in futuro smettesse anche questa, sostituire con un'altra istanza grande
+# e generalista (es. fosstodon.org, mastodon.world, hachyderm.io) o passare
+# a un access token Mastodon (vedi il messaggio di errore in monitor.py).
+MASTODON_INSTANCE = "https://mstdn.social"
 N_POSTS = 40
 MIN_HISTORY_FOR_BASELINE = 2
 # Soglia di business condivisa concettualmente con cfg.max_negative_share_increase
 # nel notebook (sezione 2): stesso valore, per restare confrontabili.
 MAX_NEGATIVE_SHARE_INCREASE = 0.15
+
+
+# Coda di revisione umana. Una confidence bassa non e' una etichetta sbagliata certa.
+REVIEW_CONFIDENCE_THRESHOLD = 0.75
+REVIEW_AUDIT_RATE = 0.10
+# Inserire nomi reali dell'azienda/prodotti. Vuoto = campione GENERALE Mastodon.
+# Il filtro non avvia una ricerca globale: seleziona i post della timeline letta.
+MONITOR_KEYWORDS = []

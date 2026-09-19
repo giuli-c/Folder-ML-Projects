@@ -39,7 +39,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
-      # Esegue tests/test_smoke.py e tests/test_app.py: se una sola
+      # Esegue tutti i test di app, dati e training: se una sola
       # assertion fallisce, l'intero job (e quindi anche il deploy) fallisce.
       - name: Run tests
         run: pytest -q

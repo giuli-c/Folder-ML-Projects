@@ -1,5 +1,5 @@
 """
-Demo interattiva del modello: a differenza di tests/test_smoke.py eseguito
+Demo interattiva del modello: a differenza di tests/test_app.py eseguito
 in automatico dalla CI, questo script va lanciato a mano (`python app.py`) 
 e apre una pagina web dove una persona puo' scrivere un testo e vedere 
 subito sentiment e confidence.

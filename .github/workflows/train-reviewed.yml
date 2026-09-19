@@ -1,0 +1,71 @@
+name: Train - Etichette approvate
+
+# Chiude il ciclo dell'human-in-the-loop: quando in monitoring/review_queue.json
+# (vedi review_data.py) c'e' abbastanza materiale APPROVATO da una persona,
+# questo workflow riaddestra il modello su quei dati reali e - solo se supera
+# i controlli di qualita' - pubblica un nuovo candidato su HuggingFace.
+#
+# Il file review_queue.json cambia per due motivi diversi, ma solo uno dei
+# due deve davvero far scattare un training:
+# - un COMMIT UMANO che approva/scarta dei post (a mano, modificando il JSON);
+# - un commit AUTOMATICO di monitor.yml, che aggiunge nuovi post "pending"
+#   da revisionare, senza approvare nulla.
+# Il push qui sotto si attiva su ENTRAMBI (non riesce a distinguerli da solo),
+# ma il primo step (human_retrain.py --check, vedi sotto) confronta i dati
+# approvati con l'ultimo tentativo: se sono gli stessi di prima (caso tipico
+# di un commit del bot, che non tocca le approvazioni), il workflow si ferma
+# li' - economico, nessuna dipendenza pesante installata, nessun training.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops/monitoring/review_queue.json'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+concurrency:
+  group: sentiment-human-review
+  cancel-in-progress: false
+
+jobs:
+  train-reviewed:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      # Il controllo usa solo la libreria standard: nessun modello scaricato
+      # se i dati approvati sono insufficienti o gia' elaborati.
+      - name: Controlla il dataset approvato
+        id: approved
+        run: python human_retrain.py --check
+      - name: Installa dipendenze
+        if: steps.approved.outputs.ready == 'true'
+        run: python -m pip install -r requirements.txt
+      - name: Training e controllo di qualita
+        if: steps.approved.outputs.ready == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python human_retrain.py --publish
+      - name: Conserva report diagnostico
+        if: always() && steps.approved.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: analisi-retraining-umano
+          path: "Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops/retraining_output/human_review/"
+          if-no-files-found: ignore
+      - name: Registra il tentativo anche se rifiutato
+        if: always() && steps.approved.outputs.ready == 'true'
+        run: |
+          if [ -f monitoring/retraining_state.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add monitoring/retraining_state.json
+            git diff --quiet --cached || git commit -m "chore: registra retraining su etichette approvate"
+            git push
+          fi

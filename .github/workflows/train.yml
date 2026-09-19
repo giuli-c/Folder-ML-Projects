@@ -8,13 +8,42 @@ on:
   workflow_dispatch:
     # Parametri configurabili al momento del lancio, dalla tab Actions di
     # GitHub - passati poi come argomenti da riga di comando a train.py.
+    # Default = configurazione vincente trovata dopo lo sweep di prove
+    # descritto nel notebook (cella "retrain-colab-tuning-notes") e in
+    # SCELTE_PROGETTUALI_ESAME.md: replay 1:1, LR intermedio, N_EVAL/N_VAL
+    # alzati per non decidere accetta/rifiuta sul rumore di un campione
+    # piccolo. Restano comunque modificabili al momento del lancio.
     inputs:
+      data_source:
+        description: "Fonte dei nuovi dati"
+        type: choice
+        options: [reviewed, external]
+        default: reviewed
       n_train:
-        description: "Esempi di retraining (totale, divisi per classe)"
-        default: "90"
+        description: "Esempi totali di retraining, inclusa la quota replay"
+        default: "132"
+      n_replay:
+        description: "Quota del totale dal train TweetEval (0 disattiva replay)"
+        default: "66"
       epochs:
-        description: "Epoche di fine-tuning"
-        default: "1"
+        description: "Massimo di epoche (early stopping su validation)"
+        default: "10"
+      learning_rate:
+        description: "Learning rate della testa (backbone congelato)"
+        default: "0.000002"
+      patience:
+        description: "Epoche senza miglioramenti ammissibili prima dello stop"
+        default: "10"
+      n_eval:
+        description: "Esempi di test per il confronto prima/dopo (per dataset)"
+        default: "500"
+      n_val:
+        description: "Esempi per ciascuna validation (per dataset)"
+        default: "500"
+      publish:
+        description: "Pubblica su HuggingFace se il controllo di regressione passa"
+        type: boolean
+        default: true
 
 jobs:
   # ============================================================
@@ -48,5 +77,12 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: >
           python train.py
+          --data-source ${{ github.event.inputs.data_source }}
           --n-train ${{ github.event.inputs.n_train }}
+          --n-replay ${{ github.event.inputs.n_replay }}
           --epochs ${{ github.event.inputs.epochs }}
+          --learning-rate ${{ github.event.inputs.learning_rate }}
+          --patience ${{ github.event.inputs.patience }}
+          --n-eval ${{ github.event.inputs.n_eval }}
+          --n-val ${{ github.event.inputs.n_val }}
+          ${{ github.event.inputs.publish != 'true' && '--no-push' || '' }}

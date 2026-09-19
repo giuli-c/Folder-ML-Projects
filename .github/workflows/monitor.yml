@@ -15,6 +15,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: sentiment-human-review
+  cancel-in-progress: false
+
 jobs:
   # ============================================================
   # JOB: MONITOR (Fase 3 - monitoraggio continuo del sentiment)
@@ -50,6 +54,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add monitoring/history.json
+          git add monitoring/
           git diff --quiet --cached || git commit -m "chore: aggiorna storia monitoraggio sentiment"
           git push

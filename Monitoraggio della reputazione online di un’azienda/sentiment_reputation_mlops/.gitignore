@@ -19,5 +19,15 @@ env/
 .DS_Store
 Thumbs.db
 
+# Dati locali generati usando la demo Gradio (es. flagged/dataset1.csv)
+.gradio/
+
+# Secret locali (mai committare token/credenziali)
+*.local.ps1
+.env
+
 # Log
 *.log
+
+retraining_output/
+sentiment_retraining_colab/

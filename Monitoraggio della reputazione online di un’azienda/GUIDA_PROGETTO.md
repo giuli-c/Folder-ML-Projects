@@ -101,45 +101,59 @@ Questa sezione copre le Fasi 2 e 3 della consegna. Tutto il codice descritto qui
 ├── .github/workflows/
 │   ├── ci.yml                # job "test" (pytest) + job "deploy" (HuggingFace Space, dopo i test)
 │   ├── train.yml             # job "train", trigger manuale (workflow_dispatch)
+│   ├── train-reviewed.yml    # job "train-reviewed", scatta sui commit a review_queue.json + manuale
 │   └── monitor.yml           # job "monitor", schedulato (cron) + trigger manuale
 └── sentiment_reputation_mlops/
     ├── requirements.txt      # dipendenze del repository (transformers, gradio, requests, ecc.)
     ├── config.py             # costanti centralizzate: modello, dataset, soglie, repo HuggingFace
     ├── predictor.py          # SentimentPredictor: carica il modello una volta, espone predict()
     ├── app.py                # demo Gradio, usa SentimentPredictor da predictor.py
-    ├── train.py              # retraining su dati mai visti dal modello base + gate di promozione
+    ├── train.py              # retraining (dataset interno approvato o pubblico) + gate a due livelli
+    ├── review_data.py        # coda di revisione umana: raccolta, validazione, split, budget
+    ├── human_retrain.py      # decide se/come lanciare train.py sui dati approvati (usato da train-reviewed.yml)
+    ├── approve_reviewed.py   # completa review_status/reviewer/reviewed_at dopo un'approvazione a mano
     ├── monitor.py            # monitoraggio del sentiment su post reali (Mastodon), con baseline storica
     ├── deploy_to_hf.py       # pubblica questa cartella come HuggingFace Space
     ├── README.md             # frontmatter richiesto da HuggingFace Space (sdk: gradio, app_file: app.py)
     ├── conftest.py           # vuoto: serve solo perche' pytest trovi predictor.py da tests/
     ├── .gitignore
-    ├── monitoring/history.json  # baseline storica, aggiornata automaticamente dal job "monitor"
+    ├── monitoring/
+    │   ├── history.json          # baseline storica, aggiornata automaticamente dal job "monitor"
+    │   ├── review_queue.json     # coda di revisione umana (raccolta da monitor.py, revisionata a mano)
+    │   └── retraining_state.json # ultimo tentativo di training sui dati approvati (fingerprint, esito)
     └── tests/
-        ├── test_smoke.py     # test_model_loads, test_known_examples, casi limite, schema di output
-        └── test_app.py       # verifica che app.py (Gradio) funzioni, non solo predictor.py
+        ├── test_app.py        # predizioni, schema di output, casi limite, interfaccia Gradio
+        ├── test_data.py       # raccolta Mastodon, revisione umana, duplicati e split
+        └── test_training.py   # precontrolli, replay, checkpoint, report, avvio automatico
 ```
 
 Il workflow `ci.yml` sta alla **vera radice del repository** GitHub, non dentro `sentiment_reputation_mlops/`: GitHub Actions legge i workflow solo da `.github/workflows/` nella radice del repository ricevuto da un push, mai da una sottocartella — se restasse annidato nella cartella applicativa, la pipeline non partirebbe mai. Un filtro `paths` lo fa comunque scattare solo quando cambia qualcosa dentro `sentiment_reputation_mlops/`.
 
 ### `config.py` — configurazione centralizzata della repository
 
-Stesso principio della `Config` del notebook (sezione 3), ma per il codice che vive nella repository: nome del modello, dataset di retraining, dataset di benchmark originale, repository HuggingFace di destinazione (Space e modello), soglie di tolleranza e di alert. Un solo punto da modificare invece di costanti duplicate in `predictor.py`, `train.py`, `deploy_to_hf.py`, `monitor.py`.
+Stesso principio della `Config` del notebook (sezione 3), ma per il codice che vive nella repository: nome del modello, dataset di retraining, dataset di benchmark originale, repository HuggingFace di destinazione (Space e modello), soglie di tolleranza e di alert, soglie della coda di revisione umana (`REVIEW_CONFIDENCE_THRESHOLD`, `REVIEW_AUDIT_RATE`, `MONITOR_KEYWORDS`). Un solo punto da modificare invece di costanti duplicate in `predictor.py`, `train.py`, `deploy_to_hf.py`, `monitor.py`, `review_data.py`.
 
 ### Job `test` (Fase 2 — test di integrazione)
 
-Installa le dipendenze ed esegue `pytest` ad ogni push o pull request su `main` che tocchi `sentiment_reputation_mlops/`. `app.py` e `tests/test_smoke.py` importano entrambi `SentimentPredictor` da `predictor.py`, che accentra il caricamento del modello in un solo posto — `conftest.py` (vuoto) è necessario perché pytest aggiunga la radice del repository a `sys.path`, altrimenti l'import di `predictor` da dentro `tests/` fallirebbe con `ModuleNotFoundError`.
+Installa le dipendenze ed esegue `pytest` ad ogni push o pull request su `main` che tocchi `sentiment_reputation_mlops/`. `app.py` e `tests/test_app.py` importano entrambi `SentimentPredictor` da `predictor.py`, che accentra il caricamento del modello in un solo posto — `conftest.py` (vuoto) è necessario perché pytest aggiunga la radice del repository a `sys.path`, altrimenti l'import di `predictor` da dentro `tests/` fallirebbe con `ModuleNotFoundError`.
 
-`tests/test_smoke.py` verifica: che il modello carichi e restituisca il formato atteso; che due frasi non ambigue vengano classificate nella classe corretta (piccolo test di regressione); lo **schema di output** (etichetta tra le tre valide, confidence in `[0, 1]`) su casi limite — stringa vuota, testo molto lungo (oltre i 128 token di truncation), lingua diversa dall'inglese, emoji. `tests/test_app.py` verifica che anche `app.py` — non solo `predictor.py` — funzioni davvero, importando il modulo e chiamando la sua funzione `predict()`.
+`tests/test_app.py` verifica: che il modello carichi e restituisca il formato atteso; che due frasi non ambigue vengano classificate nella classe corretta (piccolo test di regressione); lo **schema di output** (etichetta tra le tre valide, confidence in `[0, 1]`) su casi limite — stringa vuota, testo molto lungo (oltre i 128 token di truncation), lingua diversa dall'inglese, emoji. Lo stesso file verifica che anche `app.py` — non solo `predictor.py` — funzioni davvero, importando il modulo e chiamando la sua funzione `predict()`.
 
 ### Job `deploy` (Fase 2/3 — deploy su HuggingFace)
 
 `needs: test`, gira solo su push diretto a `main` (mai sulle pull request — i secret non sono comunque disponibili alle PR da fork, ed è corretto così: non si deploya codice non ancora mergiato). Usa `huggingface_hub` (`deploy_to_hf.py`) per pubblicare `app.py`/`predictor.py`/`requirements.txt`/`README.md` come HuggingFace Space, creandolo al primo deploy se non esiste ancora (`create_repo(..., exist_ok=True)`). Richiede il secret `HF_TOKEN` (un token HuggingFace con permessi di scrittura) configurato su GitHub in *Settings → Secrets and variables → Actions*.
 
-### Job `train` (Fase 2 — training automatizzato)
+### Job `train` (Fase 2 — training automatizzato, dataset interno o pubblico)
 
-Trigger manuale (`workflow_dispatch`, dalla tab *Actions* di GitHub): un fine-tuning, anche piccolo, su runner CPU gratuiti può richiedere diversi minuti, e non ha senso farlo scattare per un commit qualsiasi. Esegue `train.py`, che riallena il modello su **`mteb/tweet_sentiment_extraction`** — deliberatamente **diverso** dal dataset di valutazione (`tweet_eval`), perché il modello base è già stato fine-tuned proprio su TweetEval per il task di sentiment (lo dice la sua model card su HuggingFace): riallenarlo sugli stessi dati non introdurrebbe nessuna informazione nuova. Il nuovo dataset usa lo stesso schema di etichette (0=negative, 1=neutral, 2=positive), quindi nessun remapping aggiuntivo.
+Trigger manuale (`workflow_dispatch`, dalla tab *Actions* di GitHub): un fine-tuning, anche piccolo, su runner CPU gratuiti può richiedere diversi minuti, e non ha senso farlo scattare per un commit qualsiasi. Esegue `train.py`, il cui default (`--data-source reviewed`) usa il **dataset interno approvato** (`monitoring/review_queue.json`, si veda "Coda di revisione umana e retraining incrementale" più sotto) — non più solo il dataset pubblico. Passando `--data-source external` si ripete il vecchio esperimento dimostrativo su **`mteb/tweet_sentiment_extraction`**, deliberatamente **diverso** dal dataset di valutazione (`tweet_eval`), perché il modello base è già stato fine-tuned proprio su TweetEval per il task di sentiment (lo dice la sua model card su HuggingFace).
 
-Il confronto prima/dopo viene fatto su **due** test set: quello del dataset nuovo (misura se il fine-tuning aiuta davvero su dati mai visti) e un campione di `tweet_eval` (controllo di regressione, per verificare che il modello non abbia "dimenticato" quello che sapeva già fare bene — *catastrophic forgetting*). Il modello riaddestrato viene pubblicato su un repository HuggingFace dedicato (`RETRAINED_MODEL_REPO_ID`) **solo se** il calo di F1 macro sul benchmark originale resta entro `REGRESSION_TOLERANCE`: altrimenti lo script si interrompe con un errore esplicito e non pubblica nulla. La promozione del modello candidato a "modello in produzione" (aggiornare `MODEL_NAME` in `config.py`) resta comunque una decisione manuale, non automatica.
+Il training mescola i dati nuovi con un campione del train di `tweet_eval` (**replay**, `--n-replay`): serve a contenere la perdita di prestazioni sul compito originale, senza garanzie. Il backbone di RoBERTa resta **congelato**, si allena solo la testa di classificazione. Ad ogni epoca, `ValidationCheckpoint` valuta due validation separate (dati nuovi + TweetEval) e conserva in RAM solo la testa che (a) migliora la F1 sui dati nuovi di almeno `min_delta` e (b) non fa scendere la F1 sulla validation originale oltre `REGRESSION_TOLERANCE` — è un **gate a due livelli**: quello durante il training decide quale epoca tenere, un secondo controllo finale (sugli stessi due dataset, ma sui rispettivi *test* set) decide se pubblicare davvero. Se nessuna epoca soddisfa entrambe le condizioni, viene comunque mostrato il confronto dell'ultima epoca a scopo diagnostico (con un avviso rosso), ma il modello **non** viene pubblicato.
+
+`resolve_base_model()` decide da quale modello ripartire ad ogni esecuzione: se esiste già un modello pubblicato su `RETRAINED_MODEL_REPO_ID` (da un run precedente), riparte da lì — i retraining si incatenano invece di ripartire sempre dal modello CardiffNLP originale; altrimenti usa `MODEL_NAME`. È una decisione distinta dalla promozione a produzione: sceglie solo il punto di partenza del *prossimo* training, non cosa serve il traffico reale. La promozione del modello candidato a "modello in produzione" (aggiornare `MODEL_NAME` in `config.py`) resta comunque una decisione manuale, non automatica.
+
+### Job `train-reviewed` (Fase 2 — training automatico dopo un'approvazione umana)
+
+A differenza di `train`, questo workflow **non parte solo a mano**: scatta anche automaticamente ad ogni push su `main` che modifica `monitoring/review_queue.json` (cioè dopo che qualcuno ha approvato/escluso dei post — ma anche dopo un commit del bot di `monitor.yml` che aggiunge solo nuovi post `pending`, si veda il commento in cima al file YAML). Esegue prima `python human_retrain.py --check`, un controllo economico (nessuna dipendenza pesante installata) che verifica se i dati approvati bastano (`review_data.readiness()`) e sono cambiati dall'ultimo tentativo (`review_data.dataset_fingerprint()`); solo se `ready=true` installa le dipendenze e lancia `python human_retrain.py --publish`, che a sua volta chiama `train.py` con gli iperparametri scelti per questo percorso (più conservativi del default "demo": learning rate più basso, più epoche di pazienza) e il budget calcolato da `review_data.training_budget()`. Ogni tentativo, superato o rifiutato, viene registrato in `monitoring/retraining_state.json` (ricommittato nel repository) per non ripetere lo stesso identico training sugli stessi dati.
 
 ### Job `monitor` (Fase 3 — monitoraggio continuo)
 
@@ -147,12 +161,20 @@ Parte solo a mano per ora (`workflow_dispatch`, tab Actions) — il cron
 giornaliero è nel file ma commentato, pronto da riattivare togliendo il
 commento. Esegue `monitor.py`, che scarica testi pubblici reali dalla timeline pubblica di un'istanza Mastodon (nessuna autenticazione richiesta) — a differenza del retraining, qui **non serve nessuna etichetta**: il monitoraggio del drift di sentiment si basa solo sulle predizioni del modello su testo fresco, non sull'accuratezza rispetto a una verità nota. I testi vengono classificati con il modello attuale (`predictor.SentimentPredictor`), si calcola la quota di sentiment negativo del batch e la si confronta con una baseline storica (media + 1 deviazione standard delle esecuzioni precedenti — stessa logica statistica di una baseline classica, ma su dati reali accumulati nel tempo). Il risultato di ogni esecuzione viene salvato in `monitoring/history.json`, che il workflow **ricommitta nel repository** ad ogni run: è così che la baseline cresce davvero nel tempo, invece di ripartire da zero ad ogni esecuzione. Se la quota supera la soglia statistica o l'incremento supera la soglia di business, il job stampa un'annotazione `::warning::` visibile nella pagina del job GitHub Actions.
 
+Oltre a `history.json`, ogni esecuzione alimenta anche `monitoring/review_queue.json` tramite `review_data.enqueue()`: i post con confidence bassa (o un piccolo campione casuale di controllo) vengono accodati per una revisione umana — si veda "Coda di revisione umana e retraining incrementale" più sotto.
+
+### Coda di revisione umana e retraining incrementale
+
+Il monitoraggio non si limita a misurare un drift aggregato: alimenta anche un ciclo reale di **human-in-the-loop**. `monitor.py` accoda in `monitoring/review_queue.json` i post con confidence <= `REVIEW_CONFIDENCE_THRESHOLD` (0,75 di default) più un campione casuale ma deterministico (`REVIEW_AUDIT_RATE`, 10%) degli altri, per controllare anche predizioni che il modello dichiara sicure. Una persona apre quel file e scrive a mano `validated_label`/`review_status` (`approved`/`excluded`) per ogni riga da revisionare — `review_data.py` non assegna mai un'etichetta da solo. Per velocizzare la bookkeeping (senza mai decidere un'etichetta al posto della persona), `approve_reviewed.py` completa `review_status`/`reviewer`/`reviewed_at` per le righe a cui è stato scritto solo `validated_label`.
+
+Solo le righe `approved` (con `review_is_simulated=False`, revisore e data compilati) entrano nel training, tramite `review_data.approved_splits()`; `review_data.readiness()` verifica che ci siano abbastanza esempi per classe in ogni split prima di procedere. Questo intero ciclo è quello descritto nel job `train-reviewed` sopra.
+
 **Prima della consegna**: creare il repository, pushare tutto il contenuto (inclusi i workflow alla radice), configurare il secret `HF_TOKEN`, e incollare il link reale nella cella `GITHUB_REPOSITORY_URL` in cima al notebook (oggi contiene ancora un placeholder).
 
 ## 9. Limiti e sviluppi futuri
 
 - Il modello è usato così com'è, senza fine-tuning su dati reali dell'azienda nella valutazione principale — le prestazioni misurate su `tweet_eval` sono un indicatore generale, non una garanzia sul dominio specifico di MachineInnovators.
-- Il job `train` allena su un dataset pubblico generico (`tweet_sentiment_extraction`), non su menzioni reali dell'azienda: risolve il problema di riallenare su dati già visti dal modello, ma non quello di specializzarlo sul dominio specifico di MachineInnovators — servirebbero correzioni umane reali o dati aziendali etichettati, che oggi non esistono.
+- Il dataset interno approvato (via `review_data.py`) resta comunque piccolo rispetto a un uso in produzione reale: anche dopo diversi round di raccolta e revisione, si parla di poche decine/centinaia di esempi per classe, non migliaia — sufficiente per dimostrare il meccanismo, non per garantire stime stabili. Con campioni di valutazione troppo piccoli (`--n-eval`/`--n-val` bassi), il calo di F1 misurato su validation e sul test finale può differire abbastanza da cambiare l'esito vicino alla soglia di tolleranza — è per questo che la configurazione di default di `train-reviewed.yml`/`train.yml` usa `--n-eval`/`--n-val` più alti (500) rispetto al minimo tecnicamente sufficiente (200).
 - Il job `monitor` osserva un campione generico della timeline pubblica di Mastodon, non menzioni reali dell'azienda (che richiederebbero API social con accesso a pagamento, es. Twitter/X, o filtri per hashtag/keyword specifici — facilmente aggiungibili in futuro).
 - La regola di alert (media + 1 deviazione standard) resta un'euristica semplice, non un test statistico di drift rigoroso (es. Kolmogorov-Smirnov, Population Stability Index).
 - Il job `deploy` pubblica `app.py` su HuggingFace Space ad ogni push su `main` che superi i test, ma senza canary/rollback: se una modifica passa i test ma si comporta male in produzione, non c'è un meccanismo automatico per tornare alla versione precedente.
