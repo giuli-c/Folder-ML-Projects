@@ -59,17 +59,17 @@ def main():
         return
     if not should_run:
         return
-    # Il budget vero e proprio (quanti testi nuovi + di replay chiedere a
-    # train.py) lo calcola training_budget() in review_data.py, restringendosi
-    # da solo se la classe approvata meno numerosa non ne ha abbastanza.
-    n_train, n_replay, _ = training_budget(QUEUE_PATH)
-    # Iperparametri più conservativi dei default "demo" di train.py (meno
-    # epoche di rischio, learning rate più basso, patience più bassa): qui
-    # il dataset arriva da revisioni umane reali, non da un dataset pubblico
-    # generico, quindi si preferisce un aggiornamento piu' cauto del modello.
+    # Budget: rapporto 1:1 nuovi:replay (quello vincente nello sweep di prove,
+    # vedi SCELTE_PROGETTUALI_ESAME.md), ma con un tetto alto (1500/750) invece
+    # che fisso ai numeri esatti testati (132/66) - e' il limite automatico
+    # INTERNO di training_budget() (3 volte la classe meno numerosa) a fare
+    # davvero da freno, cosi' il budget scala da solo man mano che si approvano
+    # piu' dati nel tempo, invece di restare fermo per sempre a 132/66.
+    n_train, n_replay, _ = training_budget(QUEUE_PATH, max_total=1500, max_replay=750)
     command = [sys.executable, "-u", "train.py", "--reviewed-data", str(QUEUE_PATH),
                "--n-train", str(n_train), "--n-replay", str(n_replay),
-               "--epochs", "3", "--learning-rate", "1e-6", "--patience", "2",
+               "--epochs", "10", "--learning-rate", "2e-6", "--patience", "10",
+               "--n-eval", "500", "--n-val", "500",
                "--report-dir", "retraining_output/human_review"]
     # --publish arriva solo dal job che ha davvero accesso a HF_TOKEN (il
     # workflow reale); senza, il training gira comunque per intero (utile per

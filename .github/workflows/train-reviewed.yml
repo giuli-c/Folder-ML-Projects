@@ -19,8 +19,20 @@ on:
   push:
     branches: [main]
     paths:
+      # I dati approvati (il caso d'uso principale) e anche il codice che
+      # decide budget/iperparametri: un cambio agli iperparametri (come in
+      # questo commit) deve poter essere validato subito sul dataset attuale,
+      # non restare in attesa della prossima revisione umana.
       - 'Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops/monitoring/review_queue.json'
-  workflow_dispatch: {}
+      - 'Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops/human_retrain.py'
+      - 'Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops/train.py'
+      - 'Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops/review_data.py'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Riprova anche se il dataset approvato non e' cambiato dall'ultimo tentativo (es. dopo aver cambiato solo gli iperparametri in human_retrain.py)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -43,7 +55,9 @@ jobs:
       # se i dati approvati sono insufficienti o gia' elaborati.
       - name: Controlla il dataset approvato
         id: approved
-        run: python human_retrain.py --check
+        run: >
+          python human_retrain.py --check
+          ${{ github.event.inputs.force == 'true' && '--force' || '' }}
       - name: Installa dipendenze
         if: steps.approved.outputs.ready == 'true'
         run: python -m pip install -r requirements.txt
@@ -51,7 +65,9 @@ jobs:
         if: steps.approved.outputs.ready == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: python human_retrain.py --publish
+        run: >
+          python human_retrain.py --publish
+          ${{ github.event.inputs.force == 'true' && '--force' || '' }}
       - name: Conserva report diagnostico
         if: always() && steps.approved.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
