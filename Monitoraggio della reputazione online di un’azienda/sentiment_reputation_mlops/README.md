@@ -88,6 +88,15 @@ Gli ultimi due sono i più interessanti: guarda il valore di `confidence` restit
 
 Il primo caso è proprio l'esempio del limite descritto sulla classe `neutral`, documentata come la classe più difficile per questo modello; il secondo mostra invece un caso non ambiguo, con confidence molto più alta (0,99).
 
+**Stessi due esempi, dopo il retraining sui dati Mastodon approvati dalla revisione umana**: una volta riaddestrato il modello sugli esempi nuovi validati (job `train-reviewed`, si veda `GUIDA_PROGETTO.md` sezione 4.7) e promosso a modello in produzione (`MODEL_NAME` in `config.py`), questi sono i risultati sugli stessi identici due testi, provati di nuovo sulla demo:
+
+| Esempio | Prima (modello originale) | Dopo (modello riaddestrato) |
+|---|---|---|
+| "Neutro" | `positive`, confidence 0,6954 | `positive`, confidence 0,7397 |
+| "Positivo chiaro" | `positive`, confidence 0,9894 | `positive`, confidence 0,9906 |
+
+**Conclusione**: sul caso non ambiguo ("Positivo chiaro"), il modello riaddestrato resta corretto e la confidence è sostanzialmente invariata (0,9894 → 0,9906) — nessuna regressione qui, coerente col controllo di regressione superato durante il training. Sul caso "Neutro", invece, il retraining **non ha risolto** la classificazione errata: il testo continua a essere classificato `positive` invece di `neutral`, e la confidence nella risposta sbagliata è addirittura leggermente più alta di prima (0,6954 → 0,7397). Questo è un risultato onesto da riportare, non da nascondere: il dataset di revisione umana usato per questo retraining resta piccolo (poche decine di esempi per classe) e specifico dei post raccolti da Mastodon, non necessariamente rappresentativo di ogni frase ambigua possibile — un singolo ciclo di retraining non garantisce di correggere ogni caso difficile della classe `neutral`, discussa fin dall'inizio come la più critica per questo modello (si veda anche `SCELTE_PROGETTUALI_ESAME.md`).
+
 **Il pulsante "Flag" sotto l'output**: è il comportamento di default di `gr.Interface` (non è stato configurato in `app.py`), non una funzionalità di questo progetto. Se cliccato, salva input e output correnti in un CSV locale (`.gradio/flagged/dataset1.csv`, nella cartella di lavoro), ma non è collegato a `monitoring/history.json` né al dataset di retraining di `train.py` — non è una vera implementazione di una coda di revisione umana (human-in-the-loop), solo un log locale non usato dal resto della pipeline.
 
 ![Esempio di dataset1.csv con alcuni esempi flaggati dalla demo](docs/flagged-dataset-esempio.png)
@@ -224,24 +233,18 @@ Tutte le costanti sopra (`MODEL_NAME`, `RETRAIN_DATASET`,`RETRAINED_MODEL_REPO_I
 
 ## Revisione umana dei post Mastodon
 
-Il monitoraggio alimenta `monitoring/review_queue.json`: confidence <= 0.75
-oppure un campione deterministico del 10% dei post piu' sicuri. Sono ammessi solo
-post esplicitamente marcati come inglesi; boost esclusi. La coda deduplica per ID
-e testo e non modifica decisioni umane gia' salvate.
+Il monitoraggio alimenta `monitoring/review_queue.json`: confidence <= 0.75 oppure un campione deterministico del 10% dei post piu' sicuri. Sono ammessi solo
+post esplicitamente marcati come inglesi; boost esclusi. La coda deduplica per ID e testo e non modifica decisioni umane gia' salvate.
 
 In `config.py`, impostare `MONITOR_KEYWORDS` con i nomi reali dell'azienda/prodotti.
-La lista vuota indica un campione generale di Mastodon, non una misura della
-reputazione aziendale. Il filtro opera sulla timeline letta (massimo 40 post per
-richiesta), non effettua una ricerca globale. Le baseline storiche sono separate
-per ambito. Il cron del monitor resta disattivato come nella configurazione esistente.
+La lista vuota indica un campione generale di Mastodon, non una misura della reputazione aziendale. Il filtro opera sulla timeline letta (massimo 40 post per
+richiesta), non effettua una ricerca globale. Le baseline storiche sono separate per ambito. Il cron del monitor resta disattivato come nella configurazione esistente.
 
 Dalla cartella `sentiment_reputation_mlops`, eseguire `python monitor.py`.
-Aprire poi `monitoring/review_queue.json` con un editor di testo e revisionare
-manualmente ogni post, conservando il testo originale e l'etichetta proposta.
+Aprire poi `monitoring/review_queue.json` con un editor di testo e revisionare manualmente ogni post, conservando il testo originale e l'etichetta proposta.
 Il formato attualmente usato da monitoraggio, training e notebook resta JSON.
 
-Per approvare un post, compilare questi campi nella sua voce esistente
-(esempio dei soli campi da modificare, non sostituisce la voce completa):
+Per approvare un post, compilare questi campi nella sua voce esistente (esempio dei soli campi da modificare, non sostituisce la voce completa):
 
 ```json
 {
@@ -252,24 +255,16 @@ Per approvare un post, compilare questi campi nella sua voce esistente
 }
 ```
 
-Usare la propria etichetta (`negative`, `neutral` o `positive`) e la data/ora
-reale della revisione. Lasciare `review_is_simulated` a `false` per revisioni reali.
-Per escludere un testo ambiguo o non pertinente, impostare `review_status` a
-`excluded` e `validated_label` a `null`; compilare anche revisore e data.
-I post ancora da leggere restano `pending`. Non modificare ID, testo, split
-o predizione originale. Salvare mantenendo la sintassi JSON valida.
+Usare la propria etichetta (`negative`, `neutral` o `positive`) e la data/ora reale della revisione. Lasciare `review_is_simulated` a `false` per revisioni reali.
+Per escludere un testo ambiguo o non pertinente, impostare `review_status` a `excluded` e `validated_label` a `null`; compilare anche revisore e data.
+I post ancora da leggere restano `pending`. Non modificare ID, testo, split o predizione originale. Salvare mantenendo la sintassi JSON valida.
 
-**Scorciatoia**: per non scrivere a mano `review_status`/`reviewer`/`reviewed_at`
-su ogni riga, basta compilare solo `validated_label` sulle righe `pending` da
-approvare, poi lanciare `python approve_reviewed.py` (opzionale `--reviewer
-"Nome"`, default "Giulia"): completa da solo i tre campi di corredo per tutte
-le righe con `validated_label` ormai scritto, senza mai decidere un'etichetta
-al posto della persona (le righe ancora vuote restano `pending`, intatte).
+**Scorciatoia**: per non scrivere a mano `review_status`/`reviewer`/`reviewed_at` su ogni riga, basta compilare solo `validated_label` sulle righe `pending` da
+approvare, poi lanciare `python approve_reviewed.py` (opzionale `--reviewer "Nome"`, default "Giulia"): completa da solo i tre campi di corredo per tutte
+le righe con `validated_label` ormai scritto, senza mai decidere un'etichetta al posto della persona (le righe ancora vuote restano `pending`, intatte).
 
-L'etichetta del modello e' solo un suggerimento: nessuna approvazione e'
-simulata o automatica. Per correggere una revisione, aggiornare l'etichetta
-umana e la data. Gli split vengono assegnati alla raccolta con hash stabile
-del testo (circa 60% train, 20% validation, 20% test) e restano invariati.
+L'etichetta del modello e' solo un suggerimento: nessuna approvazione e' simulata o automatica. Per correggere una revisione, aggiornare l'etichetta
+umana e la data. Gli split vengono assegnati alla raccolta con hash stabile del testo (circa 60% train, 20% validation, 20% test) e restano invariati.
 `review_data.py` controlla i dati approvati quando vengono caricati dal training.
 Per verificare la disponibilita' senza avviare il training:
 
@@ -279,29 +274,22 @@ python human_retrain.py --check
 
 Il workflow del monitor conserva la coda nel repository insieme alla storia:
 in un repository pubblico, i testi raccolti e i dati di revisione sono pubblici.
-Vengono salvati ID/URL del post, testo, modello, confidence e decisione di revisione,
-senza copiare il profilo dell'autore.
+Vengono salvati ID/URL del post, testo, modello, confidence e decisione di revisione, senza copiare il profilo dell'autore.
 
 ### Training automatico dopo l'approvazione
 
 Fare commit e push su main delle revisioni in `monitoring/review_queue.json`.
-Il nuovo workflow **Train - Etichette approvate** verifica prima, senza caricare
-modelli, di avere almeno **20 train, 5 validation e 5 test per ciascuna classe**.
+Il nuovo workflow **Train - Etichette approvate** verifica prima, senza caricare modelli, di avere almeno **20 train, 5 validation e 5 test per ciascuna classe**.
 Sono soglie dimostrative minime: campioni cosi' piccoli non danno stime robuste.
 Se mancano dati, li si accumula nelle raccolte successive.
 
-Il workflow usa solo `validated_label` degli esempi approvati, mai la label
-predetta. La quota nuova e' adattata alla classe meno rappresentata, fino a
+Il workflow usa solo `validated_label` degli esempi approvati, mai la label predetta. La quota nuova e' adattata alla classe meno rappresentata, fino a
 1000 testi nuovi, con replay TweetEval pari a circa meta' della quota nuova.
-Si mantengono backbone congelato, massimo 3 epoche, learning rate 1e-6,
-early stopping, confronto diagnostico anche in caso di rifiuto e gate finali.
-`HF_TOKEN` serve per pubblicare il candidato solo se accettato; la promozione
-a modello in produzione resta manuale. Il modello non viene pubblicato se rifiutato.
+Si mantengono backbone congelato, massimo 3 epoche, learning rate 1e-6, early stopping, confronto diagnostico anche in caso di rifiuto e gate finali.
+`HF_TOKEN` serve per pubblicare il candidato solo se accettato; la promozione a modello in produzione resta manuale. Il modello non viene pubblicato se rifiutato.
 
-Il fingerprint degli esempi approvati evita di ripetere il training quando cambia
-solo la coda pending o quando il dataset e' gia' stato elaborato. Il tentativo,
-anche rifiutato, viene registrato in `monitoring/retraining_state.json`;
-un errore tecnico puo' essere ritentato esplicitamente.
+Il fingerprint degli esempi approvati evita di ripetere il training quando cambia solo la coda pending o quando il dataset e' gia' stato elaborato. Il tentativo,
+anche rifiutato, viene registrato in `monitoring/retraining_state.json`; un errore tecnico puo' essere ritentato esplicitamente.
 
 Prova locale senza pubblicazione:
 
@@ -312,24 +300,19 @@ python human_retrain.py
 python human_retrain.py --force
 ```
 
-Il report viene conservato come artifact di Actions, anche se il candidato e'
-rifiutato. Il workflow dimostrativo sul dataset esterno rimane disponibile
-separatamente. Le revisioni umane sono ancora necessarie: finche' la coda e'
-vuota o insufficiente non viene avviato un training interno.
+Il report viene conservato come artifact di Actions, anche se il candidato e' rifiutato. Il workflow dimostrativo sul dataset esterno rimane disponibile
+separatamente. Le revisioni umane sono ancora necessarie: finche' la coda e' vuota o insufficiente non viene avviato un training interno.
 
 
 ### Fonte interna predefinita in training e Colab
 
-Ora `python train.py --no-push` usa la coda interna approvata, controllandola prima
-di scaricare modelli. `--n-train` e `--n-replay` sono budget massimi: il campione
+Ora `python train.py --no-push` usa la coda interna approvata, controllandola prima di scaricare modelli. `--n-train` e `--n-replay` sono budget massimi: il campione
 viene ridotto alla disponibilita' per classe mantenendo il rapporto previsto.
 Dati assenti o insufficienti interrompono la prova senza ripiego sul dataset esterno.
 
-Su Colab eseguire sezione 1 e tutte le celle di 9-bis, caricare
-`review_queue.json` nella cella dedicata e controllare il riepilogo.
+Su Colab eseguire sezione 1 e tutte le celle di 9-bis, caricare `review_queue.json` nella cella dedicata e controllare il riepilogo.
 Il notebook adatta automaticamente il budget, usa learning rate 1e-6 e non pubblica.
-Per sostituire una coda gia' caricata, sovrascrivere il file nel pannello File di Colab
-e rieseguire la cella di controllo.
+Per sostituire una coda gia' caricata, sovrascrivere il file nel pannello File di Colab e rieseguire la cella di controllo.
 
 Per ripetere consapevolmente il vecchio esperimento:
 `python train.py --data-source external --no-push`.

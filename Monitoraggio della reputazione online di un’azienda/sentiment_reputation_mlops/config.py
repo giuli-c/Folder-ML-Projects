@@ -7,9 +7,19 @@ per costanti presenti in:
 - deploy_to_hf.py 
 """
 
-# Modello usato in produzione (predictor.py, app.py) e come punto di
-# partenza per il retraining dimostrativo (train.py).
-MODEL_NAME = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+# Modello usato in produzione (predictor.py, app.py, monitor.py) e come punto
+# di partenza per il retraining (resolve_base_model() in train.py, se non
+# esiste ancora nulla su RETRAINED_MODEL_REPO_ID).
+#
+# Modello ORIGINALE CardiffNLP, mai riaddestrato: decommentare questa riga
+# (e commentare quella sotto) per tornare esattamente ai risultati del primo
+# test della demo documentato in README.md ("Screenshot della demo", sezione
+# 2) - es. l'esempio "Neutro" classificato positive con confidence 0,6954.
+# MODEL_NAME = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+# Modello RIADDESTRATO sui dati Mastodon approvati dalla revisione umana
+# (job train-reviewed, si veda GUIDA_PROGETTO.md sezione 4.7): promosso qui
+# a modello in produzione dopo aver superato il gate di regressione.
+MODEL_NAME = "GiuliaC/sentiment-reputation-monitor-retrained"
 LABEL_MAP = {0: "negative", 1: "neutral", 2: "positive"}
 
 # ---------- DEPLOY_TO_HF.PY
