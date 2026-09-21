@@ -14,18 +14,20 @@ Demo del modello [`cardiffnlp/twitter-roberta-base-sentiment-latest`](https://hu
 
 Questo Space viene pubblicato automaticamente dal job `deploy` della pipeline CI/CD (`.github/workflows/ci.yml` nella radice del repository GitHub), dopo che i test in `tests/test_app.py` sono passati — non va aggiornato a mano.
 
+Questo README spiega **come clonare ed eseguire** il codice passo-passo. La documentazione che spiega **cosa** è stato costruito e **perché** vive nella cartella principale del repository GitHub (non su questo Space).
+
 ---
 
 ## Come replicare e usare questo progetto
 
-Il codice vive dentro un monorepo con tutti i progetti d'esame ([`giuli-c/Folder-progetti-ProfessionAI`](https://github.com/giuli-c/Folder-progetti-ProfessionAI)), in questa cartella (`Monitoraggio della reputazione online di un'azienda/sentiment_reputation_mlops/`).
+Il codice vive dentro un monorepo con tutti i progetti d'esame ([`giuli-c/Folder-ML-Projects`](https://github.com/giuli-c/Folder-ML-Projects)), in questa cartella (`Monitoraggio della reputazione online di un'azienda/sentiment_reputation_mlops/`).
 I quattro workflow GitHub Actions (`ci.yml`, `train.yml`, `train-reviewed.yml`, `monitor.yml`) vivono invece alla **radice** del repository (`.github/workflows/`), ma sono limitati a questa cartella tramite `paths:` e `working-directory:` — se sposti/copi solo questa cartella altrove, dovrai portarti dietro anche quei quattro file e aggiustare i percorsi al loro interno.
 
 ### 1. Setup locale
 
 ```bash
-git clone https://github.com/giuli-c/Folder-progetti-ProfessionAI.git
-cd "Folder-progetti-ProfessionAI/Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops"
+git clone https://github.com/giuli-c/Folder-ML-Projects.git
+cd "Folder-ML-Projects/Monitoraggio della reputazione online di un’azienda/sentiment_reputation_mlops"
 ```
 
 **Ambiente virtuale** (consigliato: evita di installare le dipendenze di questo progetto nell'ambiente Python globale, dove potrebbero scontrarsi con quelle degli altri progetti d'esame). Va creato **una sola volta**.
@@ -88,14 +90,14 @@ Gli ultimi due sono i più interessanti: guarda il valore di `confidence` restit
 
 Il primo caso è proprio l'esempio del limite descritto sulla classe `neutral`, documentata come la classe più difficile per questo modello; il secondo mostra invece un caso non ambiguo, con confidence molto più alta (0,99).
 
-**Stessi due esempi, dopo il retraining sui dati Mastodon approvati dalla revisione umana**: una volta riaddestrato il modello sugli esempi nuovi validati (job `train-reviewed`, si veda `GUIDA_PROGETTO.md` sezione 4.7) e promosso a modello in produzione (`MODEL_NAME` in `config.py`), questi sono i risultati sugli stessi identici due testi, provati di nuovo sulla demo:
+**Stessi due esempi, dopo il retraining sui dati Mastodon approvati dalla revisione umana**: una volta riaddestrato il modello sugli esempi nuovi validati (job automatico `train-reviewed`, si veda "Training automatico dopo l'approvazione" più sotto) e promosso a modello in produzione (`MODEL_NAME` in `config.py`), questi sono i risultati sugli stessi identici due testi, provati di nuovo sulla demo:
 
 | Esempio | Prima (modello originale) | Dopo (modello riaddestrato) |
 |---|---|---|
 | "Neutro" | `positive`, confidence 0,6954 | `positive`, confidence 0,7397 |
 | "Positivo chiaro" | `positive`, confidence 0,9894 | `positive`, confidence 0,9906 |
 
-**Conclusione**: sul caso non ambiguo ("Positivo chiaro"), il modello riaddestrato resta corretto e la confidence è sostanzialmente invariata (0,9894 → 0,9906) — nessuna regressione qui, coerente col controllo di regressione superato durante il training. Sul caso "Neutro", invece, il retraining **non ha risolto** la classificazione errata: il testo continua a essere classificato `positive` invece di `neutral`, e la confidence nella risposta sbagliata è addirittura leggermente più alta di prima (0,6954 → 0,7397). Questo è un risultato onesto da riportare, non da nascondere: il dataset di revisione umana usato per questo retraining resta piccolo (poche decine di esempi per classe) e specifico dei post raccolti da Mastodon, non necessariamente rappresentativo di ogni frase ambigua possibile — un singolo ciclo di retraining non garantisce di correggere ogni caso difficile della classe `neutral`, discussa fin dall'inizio come la più critica per questo modello (si veda anche `SCELTE_PROGETTUALI_ESAME.md`).
+**Conclusione**: sul caso non ambiguo ("Positivo chiaro"), il modello riaddestrato resta corretto e la confidence è sostanzialmente invariata (0,9894 → 0,9906) — nessuna regressione qui, coerente col controllo di regressione superato durante il training. Sul caso "Neutro", invece, il retraining **non ha risolto** la classificazione errata: il testo continua a essere classificato `positive` invece di `neutral`, e la confidence nella risposta sbagliata è addirittura leggermente più alta di prima (0,6954 → 0,7397). Questo è un risultato onesto da riportare, non da nascondere: il dataset di revisione umana usato per questo retraining resta piccolo (poche decine di esempi per classe) e specifico dei post raccolti da Mastodon, non necessariamente rappresentativo di ogni frase ambigua possibile — un singolo ciclo di retraining non garantisce di correggere ogni caso difficile della classe `neutral`, discussa fin dall'inizio come la più critica per questo modello.
 
 **Il pulsante "Flag" sotto l'output**: è il comportamento di default di `gr.Interface` (non è stato configurato in `app.py`), non una funzionalità di questo progetto. Se cliccato, salva input e output correnti in un CSV locale (`.gradio/flagged/dataset1.csv`, nella cartella di lavoro), ma non è collegato a `monitoring/history.json` né al dataset di retraining di `train.py` — non è una vera implementazione di una coda di revisione umana (human-in-the-loop), solo un log locale non usato dal resto della pipeline.
 
@@ -125,7 +127,7 @@ Non serve fare nulla a mano: basta pushare su `main`.
 
 ### 5. Lanciare un retraining (manuale)
 
-Da GitHub → tab **Actions** → workflow **"Train - Monitoraggio reputazione online"** → **Run workflow**, impostando (opzionali, hanno un default — quello **vincente** trovato dopo uno sweep di prove, si veda `SCELTE_PROGETTUALI_ESAME.md`):
+Da GitHub → tab **Actions** → workflow **"Train - Monitoraggio reputazione online"** → **Run workflow**, impostando (opzionali, hanno un default — quello **vincente** trovato dopo uno sweep di prove su learning rate, rapporto di replay e dimensione del campione di valutazione):
 - `data_source`: reviewed (dataset interno approvato, default) oppure external (vecchio esperimento);
 - `n_train`: numero totale di esempi (default **132**, inclusa la quota replay, esclusa la validation);
 - `n_replay`: quota del totale dal train TweetEval (default **66**: replay 1:1, non 2:1);
