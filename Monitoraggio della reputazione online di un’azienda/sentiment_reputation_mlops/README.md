@@ -139,12 +139,12 @@ Da GitHub → tab **Actions** → workflow **"Train - Monitoraggio reputazione o
 
 Il training usa il replay: mescola fino a 1000 testi interni approvati e 500 originali per provare a contenere il peggioramento sul dominio precedente senza aumentare il totale. Le due quote restano bilanciate per classe; vengono esclusi duplicati e testi di validation/test. `--n-replay 0` disattiva il replay. Non e' garantito un miglioramento.
 
-Il backbone RoBERTa resta congelato. A ogni epoca lo script valuta due validation separate: 200 testi riservati dal train del dataset nuovo (dopo la rimozione dei testi duplicati) e 200 dallo split validation di TweetEval. Conserva in RAM solo i pesi della testa migliore: la F1 nuova deve migliorare di oltre 0.001 rispetto al miglior valore ammissibile, inizialmente quello del modello di partenza, e il calo di F1 sulla validation originale deve restare entro 0.02. Dopo 2 epoche senza miglioramenti ammissibili si ferma e ripristina la testa selezionata. Se nessuna epoca soddisfa i criteri, mostra comunque il confronto sui test dell'ultima epoca a scopo diagnostico, con un avviso rosso, e rifiuta il retraining. Questo confronto non modifica la decisione presa sulla validation e non autorizza la pubblicazione.
+Il backbone RoBERTa resta congelato. A ogni epoca lo script valuta due validation separate: `n_val` testi riservati dal train del dataset nuovo (dopo la rimozione dei testi duplicati, default **500**) e altrettanti dallo split validation di TweetEval. Conserva in RAM solo i pesi della testa migliore: la F1 nuova deve migliorare di oltre 0.001 rispetto al miglior valore ammissibile, inizialmente quello del modello di partenza, e il calo di F1 sulla validation originale deve restare entro 0.02. Dopo `patience` epoche senza miglioramenti ammissibili (default **10**) si ferma e ripristina la testa selezionata. Se nessuna epoca soddisfa i criteri, mostra comunque il confronto sui test dell'ultima epoca a scopo diagnostico, con un avviso rosso, e rifiuta il retraining. Questo confronto non modifica la decisione presa sulla validation e non autorizza la pubblicazione.
 
 Prova locale senza pubblicazione (stessa configurazione nella sezione 9-bis del notebook Colab):
 
 ```bash
-python train.py --data-source reviewed --n-train 1500 --n-replay 500 --epochs 3 --learning-rate 1e-6 --n-val 200 --patience 2 --no-push
+python train.py --data-source reviewed --n-train 132 --n-replay 66 --epochs 10 --learning-rate 2e-6 --n-val 500 --n-eval 500 --patience 10 --no-push
 ```
 
 Il numero di epoche è un tetto, non una durata garantita. Più dati richiedono più lavoro per epoca anche con backbone congelato. Per regolare gli iperparametri usare la validation, non i due test finali. `--no-push` non salva permanentemente il candidato: il checkpoint della testa viene usato solo durante il processo.
@@ -287,7 +287,7 @@ Se mancano dati, li si accumula nelle raccolte successive.
 
 Il workflow usa solo `validated_label` degli esempi approvati, mai la label predetta. La quota nuova e' adattata alla classe meno rappresentata, fino a
 1000 testi nuovi, con replay TweetEval pari a circa meta' della quota nuova.
-Si mantengono backbone congelato, massimo 3 epoche, learning rate 1e-6, early stopping, confronto diagnostico anche in caso di rifiuto e gate finali.
+Si mantengono backbone congelato, massimo 10 epoche, learning rate 2e-6, early stopping, confronto diagnostico anche in caso di rifiuto e gate finali.
 `HF_TOKEN` serve per pubblicare il candidato solo se accettato; la promozione a modello in produzione resta manuale. Il modello non viene pubblicato se rifiutato.
 
 Il fingerprint degli esempi approvati evita di ripetere il training quando cambia solo la coda pending o quando il dataset e' gia' stato elaborato. Il tentativo,
@@ -313,7 +313,7 @@ viene ridotto alla disponibilita' per classe mantenendo il rapporto previsto.
 Dati assenti o insufficienti interrompono la prova senza ripiego sul dataset esterno.
 
 Su Colab eseguire sezione 1 e tutte le celle di 9-bis, caricare `review_queue.json` nella cella dedicata e controllare il riepilogo.
-Il notebook adatta automaticamente il budget, usa learning rate 1e-6 e non pubblica.
+Il notebook adatta automaticamente il budget, usa learning rate 2e-6 e non pubblica.
 Per sostituire una coda gia' caricata, sovrascrivere il file nel pannello File di Colab e rieseguire la cella di controllo.
 
 Per ripetere consapevolmente il vecchio esperimento:

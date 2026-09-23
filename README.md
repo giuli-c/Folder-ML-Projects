@@ -2,7 +2,7 @@
 
 Questo repository raccoglie una selezione di progetti di data science e machine learning sviluppati nel percorso ProfessionAI. Ogni cartella contiene un progetto autonomo, generalmente organizzato come notebook Jupyter, con eventuale guida di accompagnamento in formato Markdown.
 
-I progetti coprono casi d'uso diversi: classificazione tabellare, regressione, computer vision, transfer learning e modelli predittivi per applicazioni business.
+I progetti coprono casi d'uso diversi: classificazione tabellare, regressione, computer vision, transfer learning, modelli predittivi per applicazioni business, NLP e MLOps (pipeline di training, monitoraggio e retraining in produzione).
 
 ## Struttura del repository
 
@@ -22,6 +22,11 @@ I progetti coprono casi d'uso diversi: classificazione tabellare, regressione, c
 |-- Modello previsionale mercato immobiliare/
 |   |-- Modello_Previsionale_Mercato_Immobiliare.ipynb
 |   `-- GUIDA_PROGETTO.md
+|-- Monitoraggio della reputazione online di un'azienda/
+|   |-- Monitoraggio_Reputazione_Online_MLOps.ipynb
+|   |-- GUIDA_PROGETTO.md
+|   |-- SCELTE_PROGETTUALI_ESAME.md
+|   `-- sentiment_reputation_mlops/
 |-- Ottimizzazione rete per il settore food/
 |   |-- Classificazione_Cibo_GourmetAI.ipynb
 |   `-- GUIDA_PROGETTO.md
@@ -83,7 +88,19 @@ File principale:
 - `Modello_Previsionale_Mercato_Immobiliare.ipynb`
 - `GUIDA_PROGETTO.md`
 
-### 5. Riconoscimento di fiori
+### 5. Monitoraggio della reputazione online di un'azienda
+
+Progetto di MLOps per MachineInnovators Inc.: monitoraggio continuo della reputazione online tramite sentiment analysis (modello `cardiffnlp/twitter-roberta-base-sentiment-latest`) su post reali raccolti da Mastodon, con un ciclo completo di retraining supervisionato da revisione umana (human-in-the-loop).
+
+Il notebook copre esplorazione e valutazione del modello base, una demo di inferenza e un esperimento di retraining con transfer learning (backbone congelato, solo testa di classificazione) confrontato tramite un gate di promozione a due livelli (validazione + test). La parte realmente eseguibile in produzione (raccolta dati, coda di revisione, retraining automatico, API/demo Gradio, monitoraggio pianificato, test) vive nella repository CI/CD `sentiment_reputation_mlops/`, documentata a parte in `GUIDA_PROGETTO.md` e `SCELTE_PROGETTUALI_ESAME.md`.
+
+File principali:
+- `Monitoraggio_Reputazione_Online_MLOps.ipynb`
+- `GUIDA_PROGETTO.md`
+- `SCELTE_PROGETTUALI_ESAME.md`
+- `sentiment_reputation_mlops/` (repository CI/CD: predictor, app Gradio, training, monitoraggio, pipeline di revisione umana, test)
+
+### 6. Riconoscimento di fiori
 
 Progetto di computer vision per la classificazione binaria di immagini di fiori, in particolare daisy e dandelion. Utilizza tecniche di transfer learning con EfficientNet-B0 tramite PyTorch e la libreria `timm`.
 
@@ -93,7 +110,7 @@ File principali:
 - `Riconoscimento di fiori per AgriTech.ipynb`
 - `GUIDA_PROGETTO_FIORI.md`
 
-### 6. Riconoscimento animali CIFAR
+### 7. Riconoscimento animali CIFAR
 
 Progetto di deep learning su immagini basato sul dataset CIFAR-10, trasformato in un problema di classificazione binaria tra animali e veicoli. Il contesto applicativo e' il riconoscimento di oggetti rilevanti per sistemi di guida autonoma.
 
@@ -103,7 +120,7 @@ File principali:
 - `Rinoscimento_animali_CIFAR10.ipynb`
 - `GUIDA_PROGETTO_CIFAR.md`
 
-### 7. Ottimizzazione rete per il settore food
+### 8. Ottimizzazione rete per il settore food
 
 Progetto di computer vision per GourmetAI Inc.: classificazione multiclasse di immagini di cibo
 (14 categorie di piatti) tramite transfer learning con EfficientNet-B0 (PyTorch + `timm`).
@@ -118,7 +135,7 @@ File principali:
 - `Classificazione_Cibo_GourmetAI.ipynb`
 - `GUIDA_PROGETTO.md`
 
-### 8. Data Augmentation per la sicurezza delle centrali elettriche
+### 9. Data Augmentation per la sicurezza delle centrali elettriche
 
 Progetto di computer vision per CyberEye Solutions: verifica se una pipeline di Data Augmentation generativa (captioning con BLIP, parafrasi con Qwen2.5-1.5B-Instruct, generazione di immagini con sdxl-turbo) applicata al dataset Oxford-IIIT Pet (37 razze) migliora un classificatore EfficientNet-B0 (PyTorch + `timm`) rispetto a un training solo su dati reali.
 

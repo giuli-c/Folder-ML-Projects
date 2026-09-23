@@ -104,7 +104,7 @@ Questa sezione copre le Fasi 2 e 3 della consegna. Tutto il codice descritto qui
 │   ├── ci.yml                # job "test" (pytest) + job "deploy" (HuggingFace Space, dopo i test)
 │   ├── train.yml             # job "train", trigger manuale (workflow_dispatch)
 │   ├── train-reviewed.yml    # job "train-reviewed", scatta sui commit a review_queue.json + manuale
-│   └── monitor.yml           # job "monitor", schedulato (cron) + trigger manuale
+│   └── monitor.yml           # job "monitor", trigger manuale (cron giornaliero presente ma commentato)
 └── sentiment_reputation_mlops/
     ├── requirements.txt      # dipendenze del repository (transformers, gradio, requests, ecc.)
     ├── config.py             # costanti centralizzate: modello, dataset, soglie, repo HuggingFace
