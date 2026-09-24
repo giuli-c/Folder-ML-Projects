@@ -7,7 +7,7 @@
 > **File notebook**: `Monitoraggio_Reputazione_Online_MLOps.ipynb`
 > **Repository CI/CD**: [`sentiment_reputation_mlops/`](sentiment_reputation_mlops/)
 
-> **Nota**: questo documento spiega **cosa** è stato costruito e **come** funziona (guida tecnica completa, notebook + repository). Per **perché** è stato fatto così — teoria, alternative scartate, domande d'esame con risposta — vedi [`SCELTE_PROGETTUALI_ESAME.md`](SCELTE_PROGETTUALI_ESAME.md). Per **come clonare ed eseguire** il codice passo-passo, vedi [`sentiment_reputation_mlops/README.md`](sentiment_reputation_mlops/README.md) (che è anche il README pubblico del repository e della demo HuggingFace Space).
+> **Nota**: questo documento spiega **cosa** è stato costruito e **come** funziona (guida tecnica completa, notebook + repository). Per **come clonare ed eseguire** il codice passo-passo, vedi [`sentiment_reputation_mlops/README.md`](sentiment_reputation_mlops/README.md) (che è anche il README pubblico del repository e della demo HuggingFace Space).
 
 ## Indice
 

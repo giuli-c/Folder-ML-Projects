@@ -6,7 +6,7 @@
 > **Pipeline**: Image captioning (BLIP) → generazione testuale di varianti (Qwen2.5-1.5B-Instruct) → generazione di immagini sintetiche (sdxl-turbo) → training e confronto di un classificatore su dati reali vs. dati reali + sintetici
 > **File notebook**: `Data_Augmentation_Sicurezza_Centrali_Elettriche.ipynb`
 
-> Questa è una guida **tecnica** al codice, sezione per sezione. Per la teoria e le motivazioni da usare in sede d'esame, vedi `SCELTE_PROGETTUALI_ESAME.md`.
+> Questa è una guida **tecnica** al codice, sezione per sezione.
 
 ## Indice
 
@@ -114,7 +114,7 @@ class Config:
 
 I cinque parametri con `_MODEL` nel nome sono "specialisti" che preparano il materiale di training (descrivono foto, riscrivono descrizioni, disegnano immagini, ne giudicano la qualità); `CLASSIFIER_MODEL` è l'unico che viene effettivamente allenato e valutato — è la distinzione più importante da tenere a mente leggendo il resto della guida.
 
-**Nota sui parametri di training**: `EPOCHS=80` non significa che il training dura sempre 80 epoche — è solo il tetto massimo. Nella pratica, l'early stopping (`PATIENCE`, `MIN_DELTA`) interrompe il training molto prima, quando la validation loss smette di migliorare in modo significativo. Il tetto è stato alzato progressivamente nel corso del progetto perché con valori più bassi il training veniva interrotto prima di arrivare a una vera convergenza (vedi `SCELTE_PROGETTUALI_ESAME.md`, sezione 6).
+**Nota sui parametri di training**: `EPOCHS=80` non significa che il training dura sempre 80 epoche — è solo il tetto massimo. Nella pratica, l'early stopping (`PATIENCE`, `MIN_DELTA`) interrompe il training molto prima, quando la validation loss smette di migliorare in modo significativo. Il tetto è stato alzato progressivamente nel corso del progetto perché con valori più bassi il training veniva interrotto prima di arrivare a una vera convergenza.
 
 ### Tempi indicativi (con i valori di default, GPU T4 su Colab)
 
@@ -135,7 +135,7 @@ Numeri indicativi, non garantiti: dipendono dalla GPU assegnata dalla sessione C
 
 `OxfordIIITPet(root=..., split="trainval"/"test", target_types="category", download=True)` scarica il dataset ed espone `classes` (37 nomi di razza) e le etichette di ogni immagine.
 
-Tre insiemi disgiunti, costruiti con `train_test_split` di scikit-learn (stratificato, seed fisso) applicato agli **indici** delle immagini, non alle immagini stesse — perché il dataset le carica pigramente da disco e train/validation devono avere trasformazioni diverse (vedi sezione 6 e `SCELTE_PROGETTUALI_ESAME.md`):
+Tre insiemi disgiunti, costruiti con `train_test_split` di scikit-learn (stratificato, seed fisso) applicato agli **indici** delle immagini, non alle immagini stesse — perché il dataset le carica pigramente da disco e train/validation devono avere trasformazioni diverse (vedi sezione 6):
 
 - **Training** (`TRAIN_SIZE=0.8`, l'80% dell'intero trainval): il training set di partenza, identico nei due esperimenti principali.
 - **Validation** (il restante 20% del trainval, stratificato, esclude per costruzione gli indici di training): usato per l'early stopping, sempre reale, mai aumentato.
@@ -156,7 +156,7 @@ Una versione di `ColorJitter` era stata aggiunta e poi rimossa: rendeva ogni epo
 
 ### EfficientNet-B0, backbone sbloccato, `timm`
 
-Backbone costruito con `timm.create_model(cfg.CLASSIFIER_MODEL, pretrained=True, num_classes=NUM_CLASSES, drop_rate=cfg.DROPOUT)`. Il backbone **non è congelato**: si allena tutto il modello, ma con due learning rate diversi nello stesso ottimizzatore (`LR_BACKBONE` basso, `LR_HEAD` alto) — vedi `SCELTE_PROGETTUALI_ESAME.md` per il perché di questa scelta rispetto a backbone congelato o sblocco progressivo.
+Backbone costruito con `timm.create_model(cfg.CLASSIFIER_MODEL, pretrained=True, num_classes=NUM_CLASSES, drop_rate=cfg.DROPOUT)`. Il backbone **non è congelato**: si allena tutto il modello, ma con due learning rate diversi nello stesso ottimizzatore (`LR_BACKBONE` basso, `LR_HEAD` alto).
 
 `timm` (non `torchvision.models`) perché `num_classes` sostituisce automaticamente la testa finale con un'interfaccia identica per qualunque backbone della libreria, e `drop_rate` espone il dropout come parametro pronto all'uso — cambiare architettura richiede solo di cambiare `CLASSIFIER_MODEL`.
 
@@ -219,7 +219,7 @@ Ogni immagine sintetica viene salvata su disco in `data/synthetic/<label>_<razza
 
 La traccia chiede esplicitamente di "valutare la qualità dei dati prodotti". Oltre all'ispezione visiva (una griglia che affianca immagini reali e sintetiche per alcune razze, più una griglia dedicata alle sintetiche con CLIP score più basso), il notebook calcola il **CLIP score** tramite la classe `ClipScorer` (`clip_scorer = ClipScorer(cfg.QUALITY_CHECK_MODEL); clip_scorer.load_model(); ...; clip_scorer.clear_gpu()`): la similarità coseno, moltiplicata per 100, tra l'embedding dell'immagine sintetica e l'embedding del prompt che l'ha generata, usando `openai/clip-vit-base-patch32`.
 
-Il CLIP score è usato **solo in modo descrittivo**, non come filtro automatico che scarta immagini sotto una soglia: è una scelta deliberata, discussa in `SCELTE_PROGETTUALI_ESAME.md`.
+Il CLIP score è usato **solo in modo descrittivo**, non come filtro automatico che scarta immagini sotto una soglia: è una scelta deliberata.
 
 ## 11. Esperimento B — Augmented
 
@@ -266,4 +266,4 @@ Sviluppi naturali: più seed con intervalli di confidenza anche sul training, un
 
 ---
 
-*Guida basata sulla struttura del notebook `Data_Augmentation_Sicurezza_Centrali_Elettriche.ipynb`. Da usare insieme a `SCELTE_PROGETTUALI_ESAME.md` per la teoria e le motivazioni.*
+*Guida basata sulla struttura del notebook `Data_Augmentation_Sicurezza_Centrali_Elettriche.ipynb`.*
