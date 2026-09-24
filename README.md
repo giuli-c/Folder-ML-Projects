@@ -28,7 +28,7 @@ I progetti coprono casi d'uso diversi: classificazione tabellare, regressione, c
 |   |-- SCELTE_PROGETTUALI_ESAME.md
 |   `-- sentiment_reputation_mlops/
 |-- Ottimizzazione rete per il settore food/
-|   |-- Classificazione_Cibo_GourmetAI.ipynb
+|   |-- Classificazione_Cibo_Gourmet.ipynb
 |   `-- GUIDA_PROGETTO.md
 |-- Riconoscimento di fiori/
 |   |-- Riconoscimento di fiori per AgriTech.ipynb
@@ -123,17 +123,25 @@ File principali:
 ### 8. Ottimizzazione rete per il settore food
 
 Progetto di computer vision per GourmetAI Inc.: classificazione multiclasse di immagini di cibo
-(14 categorie di piatti) tramite transfer learning con EfficientNet-B0 (PyTorch + `timm`).
+(14 categorie di piatti) tramite transfer learning con EfficientNet (PyTorch + `timm`).
 
-Il notebook include esplorazione del dataset (EDA), data augmentation su più livelli, cinque
-esperimenti incrementali (baseline, fine-tuning progressivo, fine-tuning completo, augmentation
-forte, Mixup), metriche multiclasse (F1 macro/weighted, top-3 accuracy, matrice di confusione
-normalizzata con analisi delle coppie di classi più confuse) e un'analisi qualitativa degli errori
-sul test set.
+Il notebook include:
+- esplorazione e pulizia del dataset (integrità dei file, duplicati esatti con SHA-256,
+  etichette in conflitto), con 13.810 immagini conservate su 14.000;
+- sette esperimenti controllati con EfficientNet-B0, che modificano un fattore alla volta tra
+  augmentation, strategia di fine-tuning, label smoothing e Mixup;
+- due esperimenti di approfondimento: immagini a 288 pixel ed EfficientNet-B2;
+- selezione del modello sul validation set tramite F1 macro, metriche multiclasse (F1
+  macro/weighted, top-3 accuracy, matrice di confusione normalizzata e coppie di classi più
+  confuse) e analisi qualitativa degli errori sul test set.
+
+Il modello selezionato (EfficientNet-B0 con fine-tuning completo, augmentation strong, label
+smoothing e immagini 288x288) ottiene sul test F1 macro 0.911 e top-3 accuracy 0.974.
 
 File principali:
-- `Classificazione_Cibo_GourmetAI.ipynb`
+- `Classificazione_Cibo_Gourmet.ipynb`
 - `GUIDA_PROGETTO.md`
+- `SCELTE_PROGETTUALI_ESAME.md`
 
 ### 9. Data Augmentation per la sicurezza delle centrali elettriche
 
